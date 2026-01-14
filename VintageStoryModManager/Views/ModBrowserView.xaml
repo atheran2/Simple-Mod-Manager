@@ -418,7 +418,8 @@
                                     RenderOptions.CachingHint="Cache"
                                     Style="{StaticResource ModCardStyle}"
                                     Tag="{Binding ModId}"
-                                    UseLayoutRounding="True">
+                                    UseLayoutRounding="True"
+                                    MouseLeftButtonDown="ModCard_Click">
 
                                     <Grid>
                                         <Grid.RowDefinitions>
@@ -923,6 +924,7 @@
                                                 TextTrimming="CharacterEllipsis"
                                                 ToolTip="{Binding UserReportTooltip}" />
                                         </Border>
+
 
                                     </Grid>
                                 </Border>

@@ -1,5 +1,11 @@
 # Claude Code Instructions
 
+## Important Files
+
+**Implementation Plan:** `C:\Users\Atheran\Desktop\Claude Projects\ToDo\Vintage Story Modding\Mod Manager\Instance System Implementation Plan.md`
+
+A hardlink exists at `./PLAN.md` for convenience.
+
 ## Git Workflow - IMPORTANT
 
 **Current working branch:** `feature/game-instances`
@@ -31,9 +37,4 @@ Or use `build.bat` for release builds.
 
 ## Current Work in Progress
 
-- Game Instances system (Beta) - isolated mod environments
-- Dependency Resolver - automatic mod dependency management
-
-### Remaining TODOs
-1. Instance details/edit dialog (currently uses message box)
-2. Instance duplication feature
+See `PLAN.md` (hardlinked) for full implementation status and remaining work.

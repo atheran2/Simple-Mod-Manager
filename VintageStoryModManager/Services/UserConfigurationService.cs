@@ -271,7 +271,7 @@ public sealed class UserConfigurationService
 
     public string ModBrowserSelectedSide { get; private set; } = "any";
 
-    public string ModBrowserSelectedInstalledFilter { get; private set; } = "all";
+    public string ModBrowserSelectedInstalledFilter { get; private set; } = "not-installed";
 
     public bool ModBrowserOnlyFavorites { get; private set; }
 
@@ -2075,7 +2075,7 @@ public sealed class UserConfigurationService
             ModBrowserOrderBy = GetOptionalString(obj["modBrowserOrderBy"]) ?? "follows";
             ModBrowserOrderByDirection = GetOptionalString(obj["modBrowserOrderByDirection"]) ?? "desc";
             ModBrowserSelectedSide = GetOptionalString(obj["modBrowserSelectedSide"]) ?? "any";
-            ModBrowserSelectedInstalledFilter = GetOptionalString(obj["modBrowserSelectedInstalledFilter"]) ?? "all";
+            ModBrowserSelectedInstalledFilter = GetOptionalString(obj["modBrowserSelectedInstalledFilter"]) ?? "not-installed";
             ModBrowserOnlyFavorites = obj["modBrowserOnlyFavorites"]?.GetValue<bool?>() ?? false;
             ModBrowserRelevantSearch = obj["modBrowserRelevantSearch"]?.GetValue<bool?>() ?? true;
             ModBrowserFavoriteModIds = LoadIntList(obj["modBrowserFavoriteModIds"]);
@@ -2221,7 +2221,7 @@ public sealed class UserConfigurationService
             ModBrowserOrderBy = "follows";
             ModBrowserOrderByDirection = "desc";
             ModBrowserSelectedSide = "any";
-            ModBrowserSelectedInstalledFilter = "all";
+            ModBrowserSelectedInstalledFilter = "not-installed";
             ModBrowserOnlyFavorites = false;
             ModBrowserRelevantSearch = true;
             ModBrowserFavoriteModIds = [];

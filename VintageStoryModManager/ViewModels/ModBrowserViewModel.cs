@@ -84,7 +84,7 @@ public partial class ModBrowserViewModel : ObservableObject
     private string _selectedSide = "any";
 
     [ObservableProperty]
-    private string _selectedInstalledFilter = "all";
+    private string _selectedInstalledFilter = "not-installed";
 
     [ObservableProperty]
     private bool _onlyFavorites;
@@ -150,6 +150,8 @@ public partial class ModBrowserViewModel : ObservableObject
     ];
 
     #endregion
+
+    public IModApiService ModApiService => _modApiService;
 
     public ModBrowserViewModel(IModApiService modApiService, UserConfigurationService? userConfigService = null)
     {

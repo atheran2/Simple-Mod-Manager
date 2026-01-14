@@ -4,7 +4,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using VintageStoryModManager.Models;
+using VintageStoryModManager.Services;
 using VintageStoryModManager.ViewModels;
+using VintageStoryModManager.Views.Dialogs;
 
 namespace VintageStoryModManager.Views;
 
@@ -158,6 +160,52 @@ public partial class ModBrowserView : System.Windows.Controls.UserControl
         if (sender is FrameworkElement element && element.Tag is int assetId)
         {
             ViewModel?.OpenModInBrowserCommand.Execute(assetId);
+        }
+    }
+
+    private async void ModCard_Click(object sender, MouseButtonEventArgs e)
+    {
+        // Don't open modal if clicking on buttons or links
+        if (e.OriginalSource is FrameworkElement source)
+        {
+            var parent = source;
+            while (parent != null)
+            {
+                if (parent is System.Windows.Controls.Button)
+                    return;
+                parent = parent.Parent as FrameworkElement;
+            }
+        }
+
+        if (sender is FrameworkElement element && element.DataContext is DownloadableModOnList mod)
+        {
+            e.Handled = true;
+            await ShowModDescriptionDialogAsync(mod);
+        }
+    }
+
+    private async Task ShowModDescriptionDialogAsync(DownloadableModOnList mod)
+    {
+        if (ViewModel == null) return;
+
+        // Fetch full description
+        string htmlContent;
+        try
+        {
+            var fullMod = await ViewModel.ModApiService.GetModAsync(mod.ModId);
+            htmlContent = fullMod?.Text ?? $"<p>{mod.Summary ?? "No description available."}</p>";
+        }
+        catch
+        {
+            htmlContent = $"<p>{mod.Summary ?? "Failed to load description."}</p>";
+        }
+
+        // Show modal
+        var ownerWindow = Window.GetWindow(this);
+        if (ownerWindow != null)
+        {
+            var dialog = new ModDescriptionDialog(ownerWindow, mod, htmlContent);
+            dialog.ShowDialog();
         }
     }
 

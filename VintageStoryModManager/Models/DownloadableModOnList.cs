@@ -108,6 +108,8 @@ public class DownloadableModOnList : INotifyPropertyChanged
 
     private bool _isInstalled;
 
+    private bool _isExpanded;
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>
@@ -163,6 +165,58 @@ public class DownloadableModOnList : INotifyPropertyChanged
             if (value == _isInstalled) return;
 
             _isInstalled = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets whether the mod card is expanded to show full description.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set
+        {
+            if (value == _isExpanded) return;
+
+            _isExpanded = value;
+            OnPropertyChanged();
+        }
+    }
+
+    private string? _fullDescription;
+
+    /// <summary>
+    /// Gets or sets the full mod description (fetched on demand when expanded).
+    /// </summary>
+    [JsonIgnore]
+    public string? FullDescription
+    {
+        get => _fullDescription;
+        set
+        {
+            if (value == _fullDescription) return;
+
+            _fullDescription = value;
+            OnPropertyChanged();
+        }
+    }
+
+    private bool _isLoadingDescription;
+
+    /// <summary>
+    /// Gets or sets whether the full description is currently being loaded.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsLoadingDescription
+    {
+        get => _isLoadingDescription;
+        set
+        {
+            if (value == _isLoadingDescription) return;
+
+            _isLoadingDescription = value;
             OnPropertyChanged();
         }
     }

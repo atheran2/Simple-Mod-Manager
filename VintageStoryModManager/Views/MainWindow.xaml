@@ -675,6 +675,7 @@
                 Background="Transparent"
                 BorderThickness="0,0,0,0"
                 ItemContainerStyle="{StaticResource IMM.MiddleTabItemStyle}"
+                SelectedIndex="3"
                 SelectionChanged="MiddleTabControl_OnSelectionChanged">
 
                 <!--  ============================================================  -->

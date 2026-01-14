@@ -288,6 +288,81 @@ public sealed class InstanceService
     }
 
     /// <summary>
+    ///     Duplicates an existing instance.
+    /// </summary>
+    /// <param name="sourceId">The ID of the instance to duplicate.</param>
+    /// <param name="progress">Optional progress reporter.</param>
+    /// <returns>The new duplicated instance, or null if the source was not found.</returns>
+    public GameInstance? DuplicateInstance(string sourceId, IProgress<string>? progress = null)
+    {
+        if (!_instances.TryGetValue(sourceId, out var source))
+            return null;
+
+        if (!Directory.Exists(source.Path))
+            return null;
+
+        // Generate new name with (Copy) suffix
+        var newName = $"{source.Name} (Copy)";
+        var sanitizedName = SanitizeFolderName(newName);
+        var newPath = GetUniqueInstancePath(sanitizedName);
+        var newId = Guid.NewGuid().ToString("N");
+
+        progress?.Report("Creating instance folder...");
+
+        // Copy the entire folder
+        CopyDirectory(source.Path, newPath, progress);
+
+        // Create the new instance object
+        var newInstance = new GameInstance
+        {
+            Id = newId,
+            Name = newName,
+            Path = newPath,
+            GameDirectory = source.GameDirectory,
+            TargetVsVersion = source.TargetVsVersion,
+            IconPath = source.IconPath,
+            Notes = source.Notes,
+            Created = DateTime.UtcNow,
+            LastPlayed = null,
+            TotalPlaytimeSeconds = 0
+        };
+
+        // Save instance metadata (overwrites the copied one with new ID)
+        SaveInstanceMetadata(newInstance);
+
+        // Add to our collection
+        _instances[newId] = newInstance;
+
+        SaveConfiguration();
+        // Note: Don't fire InstancesChanged here - caller is responsible for refreshing UI
+        // since this method may run on a background thread
+
+        return newInstance;
+    }
+
+    private static void CopyDirectory(string sourcePath, string destinationPath, IProgress<string>? progress = null)
+    {
+        Directory.CreateDirectory(destinationPath);
+
+        // Copy files
+        foreach (var file in Directory.GetFiles(sourcePath))
+        {
+            var fileName = Path.GetFileName(file);
+            progress?.Report($"Copying {fileName}...");
+            var destFile = Path.Combine(destinationPath, fileName);
+            File.Copy(file, destFile, overwrite: true);
+        }
+
+        // Copy subdirectories recursively
+        foreach (var dir in Directory.GetDirectories(sourcePath))
+        {
+            var dirName = Path.GetFileName(dir);
+            var destDir = Path.Combine(destinationPath, dirName);
+            CopyDirectory(dir, destDir, progress);
+        }
+    }
+
+    /// <summary>
     ///     Updates the last played time for the active instance.
     /// </summary>
     public void UpdateLastPlayed()
@@ -297,6 +372,15 @@ public sealed class InstanceService
 
         ActiveInstance.LastPlayed = DateTime.UtcNow;
         SaveInstanceMetadata(ActiveInstance);
+    }
+
+    /// <summary>
+    ///     Saves the instance metadata to disk.
+    /// </summary>
+    public void SaveInstance(GameInstance instance)
+    {
+        SaveInstanceMetadata(instance);
+        InstancesChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>

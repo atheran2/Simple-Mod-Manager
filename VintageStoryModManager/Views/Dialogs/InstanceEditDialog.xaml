@@ -1,0 +1,137 @@
+<Window x:Class="VintageStoryModManager.Views.Dialogs.InstanceEditDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Edit Instance"
+        Width="500"
+        Height="380"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        WindowStyle="SingleBorderWindow"
+        ShowInTaskbar="False"
+        Loaded="Window_OnLoaded"
+        Background="{DynamicResource Brush.Window.Shell.Background.Solid}">
+    <Grid Margin="20"
+          Background="{DynamicResource Brush.Panel.Primary.Background.Solid}"
+          TextElement.Foreground="{DynamicResource Brush.Text.Primary}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Instance Name -->
+        <TextBlock Text="Name:"
+                   Grid.Row="0"
+                   Grid.Column="0"
+                   Margin="0,0,12,12"
+                   VerticalAlignment="Center" />
+        <TextBox x:Name="NameTextBox"
+                 Grid.Row="0"
+                 Grid.Column="1"
+                 Grid.ColumnSpan="2"
+                 Margin="0,0,0,12"
+                 TextChanged="NameTextBox_OnTextChanged"
+                 Background="{DynamicResource Brush.Dialog.TextBox.Background}"
+                 BorderBrush="{DynamicResource Brush.Dialog.TextBox.Border}"
+                 SelectionBrush="{DynamicResource Brush.Dialog.TextBox.SelectionBackground}"
+                 SelectionTextBrush="{DynamicResource Brush.Dialog.TextBox.SelectionForeground}"
+                 CaretBrush="{DynamicResource Brush.Dialog.TextBox.Caret}" />
+
+        <!-- Custom Icon -->
+        <TextBlock Text="Icon:"
+                   Grid.Row="1"
+                   Grid.Column="0"
+                   Margin="0,0,12,12"
+                   VerticalAlignment="Center" />
+        <TextBox x:Name="IconPathTextBox"
+                 Grid.Row="1"
+                 Grid.Column="1"
+                 Margin="0,0,8,12"
+                 IsReadOnly="True"
+                 Background="{DynamicResource Brush.Dialog.TextBox.Background}"
+                 BorderBrush="{DynamicResource Brush.Dialog.TextBox.Border}"
+                 SelectionBrush="{DynamicResource Brush.Dialog.TextBox.SelectionBackground}"
+                 SelectionTextBrush="{DynamicResource Brush.Dialog.TextBox.SelectionForeground}"
+                 CaretBrush="{DynamicResource Brush.Dialog.TextBox.Caret}" />
+        <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal" Margin="0,0,0,12">
+            <Button x:Name="BrowseIconButton"
+                    Content="..."
+                    Width="30"
+                    Margin="0,0,4,0"
+                    Click="BrowseIconButton_OnClick"
+                    ToolTip="Browse for icon" />
+            <Button x:Name="ClearIconButton"
+                    Content="X"
+                    Width="30"
+                    Click="ClearIconButton_OnClick"
+                    ToolTip="Clear icon" />
+        </StackPanel>
+
+        <!-- Game Version (read-only, auto-detected) -->
+        <TextBlock Text="Game Version:"
+                   Grid.Row="2"
+                   Grid.Column="0"
+                   Margin="0,0,12,12"
+                   VerticalAlignment="Center" />
+        <TextBlock x:Name="GameVersionText"
+                   Grid.Row="2"
+                   Grid.Column="1"
+                   Grid.ColumnSpan="2"
+                   Margin="0,0,0,12"
+                   VerticalAlignment="Center"
+                   Foreground="{DynamicResource Brush.Text.Primary}" />
+
+        <!-- Notes -->
+        <TextBlock Text="Notes:"
+                   Grid.Row="3"
+                   Grid.Column="0"
+                   Margin="0,0,12,6"
+                   VerticalAlignment="Top" />
+        <TextBox x:Name="NotesTextBox"
+                 Grid.Row="4"
+                 Grid.Column="0"
+                 Grid.ColumnSpan="3"
+                 MinHeight="100"
+                 TextWrapping="Wrap"
+                 AcceptsReturn="True"
+                 VerticalScrollBarVisibility="Auto"
+                 Background="{DynamicResource Brush.Dialog.TextBox.Background}"
+                 BorderBrush="{DynamicResource Brush.Dialog.TextBox.Border}"
+                 SelectionBrush="{DynamicResource Brush.Dialog.TextBox.SelectionBackground}"
+                 SelectionTextBrush="{DynamicResource Brush.Dialog.TextBox.SelectionForeground}"
+                 CaretBrush="{DynamicResource Brush.Dialog.TextBox.Caret}" />
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="5"
+                    Grid.Column="0"
+                    Grid.ColumnSpan="3"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,18,0,0">
+            <Button x:Name="OpenFolderButton"
+                    Content="Open Folder"
+                    MinWidth="88"
+                    Margin="0,0,12,0"
+                    Click="OpenFolderButton_OnClick"
+                    ToolTip="Open the instance folder in Explorer" />
+            <Button x:Name="SaveButton"
+                    Content="Save"
+                    MinWidth="88"
+                    Margin="0,0,12,0"
+                    IsDefault="True"
+                    Click="SaveButton_OnClick"
+                    IsEnabled="False" />
+            <Button Content="Cancel"
+                    MinWidth="88"
+                    IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

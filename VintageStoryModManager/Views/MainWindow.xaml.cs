@@ -2824,14 +2824,48 @@ public partial class MainWindow : Window
         await DeleteInstanceAsync(card.Instance);
     }
 
-    private void InstanceBrowser_DuplicateInstanceRequested(object? sender, InstanceCardViewModel card)
+    private async void InstanceBrowser_DuplicateInstanceRequested(object? sender, InstanceCardViewModel card)
     {
-        // TODO: Implement instance duplication
-        WpfMessageBox.Show(
-            "Instance duplication is not yet implemented.",
-            "Simple VS Manager",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+        var instance = card.Instance;
+
+        var result = WpfMessageBox.Show(
+            $"Create a copy of \"{instance.Name}\"?\n\nThis will duplicate all mods, saves, and configurations.",
+            "Duplicate Instance",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            _viewModel?.ReportStatus($"Duplicating instance \"{instance.Name}\"...");
+
+            // Run the duplication on a background thread since it may take a while
+            var newInstance = await Task.Run(() => _instanceService.DuplicateInstance(instance.Id));
+
+            if (newInstance != null)
+            {
+                _viewModel?.ReportStatus($"Instance duplicated as \"{newInstance.Name}\".");
+                await Dispatcher.InvokeAsync(() => _instanceBrowserViewModel?.RefreshInstances());
+            }
+            else
+            {
+                WpfMessageBox.Show(
+                    "Failed to duplicate instance. The source folder may not exist.",
+                    "Simple VS Manager",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show(
+                $"Failed to duplicate instance: {ex.Message}",
+                "Simple VS Manager",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
     }
 
     private void InstanceBrowser_OpenFolderRequested(object? sender, InstanceCardViewModel card)
@@ -2954,23 +2988,26 @@ public partial class MainWindow : Window
 
     private void ShowInstanceDetailsDialog(InstanceCardViewModel card)
     {
-        // TODO: Implement proper instance details dialog
-        // For now, show a simple info message
         var instance = card.Instance;
-        var message = $"Instance: {instance.Name}\n" +
-                      $"Path: {instance.Path}\n" +
-                      $"Created: {instance.Created.ToLocalTime():g}\n" +
-                      $"Last Played: {(instance.LastPlayed?.ToLocalTime().ToString("g") ?? "Never")}\n" +
-                      $"Playtime: {card.PlaytimeDisplay}\n" +
-                      $"Game Version: {card.GameVersion}\n" +
-                      $"Mods: {card.ModCountDisplay}\n" +
-                      (string.IsNullOrWhiteSpace(instance.Notes) ? "" : $"\nNotes: {instance.Notes}");
+        var dialog = new InstanceEditDialog(this, instance, _gameDirectory);
 
-        WpfMessageBox.Show(
-            message,
-            "Instance Details",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+        if (dialog.ShowDialog() == true)
+        {
+            // Apply changes to the instance
+            instance.Name = dialog.InstanceName;
+            instance.IconPath = dialog.IconPath;
+            instance.Notes = dialog.Notes;
+
+            // Save the updated instance
+            _instanceService.SaveInstance(instance);
+
+            // Refresh the card display
+            card.Refresh();
+
+            // Update menu items if the name changed
+            RefreshInstanceMenuItems();
+            UpdateInstanceMenuChecks();
+        }
     }
 
     private void InitializeVotesCacheWatcher()

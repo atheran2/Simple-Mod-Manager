@@ -42,8 +42,7 @@
                     Command="{Binding CreateInstanceCommand}"
                     Padding="16,8"
                     FontSize="14"
-                    Background="{DynamicResource Brush.Accent.Primary}"
-                    Foreground="White"
+                    Style="{StaticResource IMM.ButtonBaseStyle}"
                     Cursor="Hand" />
         </Grid>
 
@@ -72,8 +71,7 @@
                             Padding="20,10"
                             FontSize="14"
                             HorizontalAlignment="Center"
-                            Background="{DynamicResource Brush.Accent.Primary}"
-                            Foreground="White"
+                            Style="{StaticResource IMM.ButtonBaseStyle}"
                             Cursor="Hand" />
                 </StackPanel>
 

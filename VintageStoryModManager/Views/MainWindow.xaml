@@ -138,6 +138,43 @@
                                 Opacity="0.75" />
                         </MenuItem>
                         <MenuItem
+                            x:Name="InstancesMenuItem"
+                            Height="35"
+                            Header="Instances (Beta)"
+                            SubmenuOpened="InstancesMenuItem_OnSubmenuOpened">
+                            <MenuItem
+                                x:Name="UseProfileMenuItem"
+                                Height="35"
+                                Click="UseProfileMenuItem_OnClick"
+                                Header="Use Profile (No Instance)"
+                                IsCheckable="True" />
+                            <Separator />
+                            <MenuItem
+                                x:Name="CreateInstanceMenuItem"
+                                Height="35"
+                                Click="CreateInstanceMenuItem_OnClick"
+                                Header="Create new instance..." />
+                            <MenuItem
+                                x:Name="DeleteInstanceMenuItem"
+                                Height="35"
+                                Padding="12,6"
+                                Click="DeleteInstanceMenuItem_OnClick"
+                                Focusable="False"
+                                Header="Delete instance..."
+                                Opacity="0.75" />
+                            <MenuItem
+                                x:Name="OpenInstanceFolderMenuItem"
+                                Height="35"
+                                Click="OpenInstanceFolderMenuItem_OnClick"
+                                Header="Open instance folder" />
+                            <MenuItem
+                                x:Name="SetInstancesRootMenuItem"
+                                Height="35"
+                                Click="SetInstancesRootMenuItem_OnClick"
+                                Header="Set instances folder..." />
+                            <Separator />
+                        </MenuItem>
+                        <MenuItem
                             Height="35"
                             Header="Restore mods backup"
                             SubmenuOpened="RestoreBackupMenuItem_OnSubmenuOpened">
@@ -177,6 +214,10 @@
                             Height="35"
                             Click="CheckModsCompatibilityMenuItem_OnClick"
                             Header="Check mods compatibility" />
+                        <MenuItem
+                            Height="35"
+                            Click="FixAllDependenciesMenuItem_OnClick"
+                            Header="Fix all missing dependencies" />
                         <MenuItem
                             x:Name="RequireExactVsVersionMenuItem"
                             Height="35"
@@ -1882,6 +1923,26 @@
                                 </TabItem>
                             </TabControl>
                         </Grid>
+                    </Border>
+                </TabItem>
+
+                <!--  ============================================================  -->
+                <!--  TAB 4: Instances Tab  -->
+                <!--  ============================================================  -->
+                <TabItem
+                    x:Name="InstancesTab"
+                    Width="Auto"
+                    Height="30"
+                    Padding="8,6,8,6"
+                    HorizontalContentAlignment="Stretch"
+                    Foreground="{DynamicResource Brush.Text.Placeholder}"
+                    Header="Instances">
+                    <Border
+                        Margin="8,0,8,0"
+                        Background="{DynamicResource Brush.MiddleTab.Background.Selected}"
+                        BorderThickness="0"
+                        CornerRadius="0,8,0,0">
+                        <views:InstanceBrowserView x:Name="InstanceBrowserView" />
                     </Border>
                 </TabItem>
             </TabControl>

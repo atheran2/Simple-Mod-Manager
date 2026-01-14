@@ -1,0 +1,118 @@
+<UserControl x:Class="VintageStoryModManager.Views.InstanceBrowserView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="clr-namespace:VintageStoryModManager.Views.Controls"
+             xmlns:vm="clr-namespace:VintageStoryModManager.ViewModels"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance Type={x:Type vm:InstanceBrowserViewModel}}"
+             d:DesignHeight="600"
+             d:DesignWidth="900"
+             Background="{DynamicResource Brush.Panel.Primary.Background.Solid}">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </UserControl.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <!-- Header -->
+            <RowDefinition Height="Auto" />
+            <!-- Content -->
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Margin="0,0,0,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Text="Instances"
+                       FontSize="24"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource Brush.Text.Primary}"
+                       VerticalAlignment="Center" />
+
+            <!-- Create New Instance Button -->
+            <Button Grid.Column="1"
+                    Content="+ New Instance"
+                    Command="{Binding CreateInstanceCommand}"
+                    Padding="16,8"
+                    FontSize="14"
+                    Background="{DynamicResource Brush.Accent.Primary}"
+                    Foreground="White"
+                    Cursor="Hand" />
+        </Grid>
+
+        <!-- Instance Cards Grid -->
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+
+            <Grid>
+                <!-- Empty state message -->
+                <StackPanel HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="No instances yet"
+                               FontSize="20"
+                               Foreground="{DynamicResource Brush.Text.Subtle}"
+                               HorizontalAlignment="Center"
+                               Margin="0,0,0,8" />
+                    <TextBlock Text="Create an instance to get started with isolated mod setups."
+                               FontSize="14"
+                               Foreground="{DynamicResource Brush.Text.Subtle}"
+                               HorizontalAlignment="Center"
+                               Margin="0,0,0,16" />
+                    <Button Content="Create Your First Instance"
+                            Command="{Binding CreateInstanceCommand}"
+                            Padding="20,10"
+                            FontSize="14"
+                            HorizontalAlignment="Center"
+                            Background="{DynamicResource Brush.Accent.Primary}"
+                            Foreground="White"
+                            Cursor="Hand" />
+                </StackPanel>
+
+                <!-- Instance cards wrap panel -->
+                <ItemsControl ItemsSource="{Binding Instances}"
+                              Visibility="{Binding HasInstances, Converter={StaticResource BoolToVis}}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:InstanceCardViewModel}">
+                            <controls:InstanceCard Margin="0,0,16,16"
+                                                   LaunchClicked="InstanceCard_LaunchClicked"
+                                                   DetailsClicked="InstanceCard_DetailsClicked">
+                                <controls:InstanceCard.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Launch Game"
+                                                  Click="LaunchMenuItem_Click" />
+                                        <MenuItem Header="Edit Instance"
+                                                  Click="EditMenuItem_Click" />
+                                        <Separator />
+                                        <MenuItem Header="Open Folder"
+                                                  Click="OpenFolderMenuItem_Click" />
+                                        <MenuItem Header="Duplicate"
+                                                  Click="DuplicateMenuItem_Click" />
+                                        <Separator />
+                                        <MenuItem Header="Delete"
+                                                  Click="DeleteMenuItem_Click"
+                                                  Foreground="#FF6B6B" />
+                                    </ContextMenu>
+                                </controls:InstanceCard.ContextMenu>
+                            </controls:InstanceCard>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

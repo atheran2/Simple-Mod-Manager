@@ -311,12 +311,15 @@ public partial class MainWindow : Window
     // Menu item collections
     private readonly List<MenuItem> _developerProfileMenuItems = new();
     private readonly List<MenuItem> _gameProfileMenuItems = new();
+    private readonly List<MenuItem> _instanceMenuItems = new();
     private readonly Dictionary<InstalledModsColumn, bool> _installedColumnVisibilityPreferences = new();
 
     // Services
     private readonly ModCompatibilityCommentsService _modCompatibilityCommentsService = new();
     private readonly ModDatabaseService _modDatabaseService = new();
     private readonly ModUpdateService _modUpdateService = new();
+    private readonly InstanceService _instanceService = new();
+    private readonly DependencyResolverService _dependencyResolverService;
     private DataBackupService _dataBackupService;
     private readonly ModActivityLoggingService _modActivityLoggingService;
     private readonly UserConfigurationService _userConfiguration;
@@ -383,6 +386,7 @@ public partial class MainWindow : Window
     // ViewModel
     private MainViewModel? _viewModel;
     private ModBrowserViewModel? _modBrowserViewModel;
+    private InstanceBrowserViewModel? _instanceBrowserViewModel;
     private readonly List<MenuItem> _customThemeMenuItems = new();
 
     #endregion
@@ -400,10 +404,12 @@ public partial class MainWindow : Window
             _userConfiguration.GetConfigurationDirectory(),
             _userConfiguration.CustomDataBackupLocation);
         _modActivityLoggingService = new ModActivityLoggingService(_userConfiguration);
+        _dependencyResolverService = new DependencyResolverService(_modDatabaseService);
 
         InitializeComponent();
 
         InitializeModBrowserView();
+        InitializeInstanceBrowserView();
 
         DeveloperProfileManager.CurrentProfileChanged += DeveloperProfileManager_OnCurrentProfileChanged;
 
@@ -448,6 +454,14 @@ public partial class MainWindow : Window
         UpdateModlistAutoLoadMenu(_userConfiguration.ModlistAutoLoadBehavior);
 
         TryInitializePaths();
+
+        // If an instance was active last session, use its path instead of the profile path
+        var activeInstance = _instanceService.ActiveInstance;
+        if (activeInstance != null && Directory.Exists(activeInstance.Path))
+        {
+            _dataDirectory = activeInstance.Path;
+        }
+
         RefreshDeveloperProfilesMenuEntries();
         UpdateGameProfileMenuChecks();
         UpdateActiveGameProfileDisplay();
@@ -2761,6 +2775,204 @@ public partial class MainWindow : Window
         }
     }
 
+    private void InitializeInstanceBrowserView()
+    {
+        if (InstanceBrowserView != null)
+        {
+            _instanceBrowserViewModel = new InstanceBrowserViewModel(_instanceService);
+
+            // Wire up event handlers
+            _instanceBrowserViewModel.LaunchInstanceRequested += InstanceBrowser_LaunchInstanceRequested;
+            _instanceBrowserViewModel.EditInstanceRequested += InstanceBrowser_EditInstanceRequested;
+            _instanceBrowserViewModel.CreateInstanceRequested += InstanceBrowser_CreateInstanceRequested;
+            _instanceBrowserViewModel.DeleteInstanceRequested += InstanceBrowser_DeleteInstanceRequested;
+            _instanceBrowserViewModel.DuplicateInstanceRequested += InstanceBrowser_DuplicateInstanceRequested;
+            _instanceBrowserViewModel.OpenFolderRequested += InstanceBrowser_OpenFolderRequested;
+
+            InstanceBrowserView.DataContext = _instanceBrowserViewModel;
+        }
+    }
+
+    private async void InstanceBrowser_LaunchInstanceRequested(object? sender, GameInstance instance)
+    {
+        // Switch to this instance first, then launch
+        _instanceService.SetActiveInstance(instance.Id);
+        _dataDirectory = instance.Path;
+        await ReloadViewModelAsync();
+        RefreshInstanceMenuItems();
+        UpdateInstanceMenuChecks();
+
+        // Launch the game with this instance (simulate button click)
+        LaunchGameButton_OnClick(this, new RoutedEventArgs());
+    }
+
+    private void InstanceBrowser_EditInstanceRequested(object? sender, InstanceCardViewModel card)
+    {
+        // TODO: Show instance details/edit dialog
+        // For now, just switch to this instance and show a message
+        ShowInstanceDetailsDialog(card);
+    }
+
+    private async void InstanceBrowser_CreateInstanceRequested(object? sender, EventArgs e)
+    {
+        // Reuse existing create instance logic
+        await CreateNewInstanceAsync();
+    }
+
+    private async void InstanceBrowser_DeleteInstanceRequested(object? sender, InstanceCardViewModel card)
+    {
+        await DeleteInstanceAsync(card.Instance);
+    }
+
+    private void InstanceBrowser_DuplicateInstanceRequested(object? sender, InstanceCardViewModel card)
+    {
+        // TODO: Implement instance duplication
+        WpfMessageBox.Show(
+            "Instance duplication is not yet implemented.",
+            "Simple VS Manager",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    private void InstanceBrowser_OpenFolderRequested(object? sender, InstanceCardViewModel card)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = card.Path,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show(
+                $"Failed to open folder: {ex.Message}",
+                "Simple VS Manager",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private async Task CreateNewInstanceAsync()
+    {
+        var dialog = new TextInputDialog("Create New Instance", "Instance name:", "My Instance");
+        dialog.Owner = this;
+        if (dialog.ShowDialog() != true) return;
+
+        var instanceName = dialog.InputText;
+        if (string.IsNullOrWhiteSpace(instanceName))
+        {
+            WpfMessageBox.Show("Instance name cannot be empty.", "Simple VS Manager",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            // Pass the current profile's data directory to copy player session from
+            var sourceDataDirectory = _userConfiguration.DataDirectory;
+            var instance = _instanceService.CreateInstance(instanceName, sourceDataDirectory);
+
+            // Switch to the new instance
+            _instanceService.SetActiveInstance(instance.Id);
+            _dataDirectory = instance.Path;
+            _cloudModlistStore = null;
+            await ReloadViewModelAsync();
+
+            // Sync installed mods to ModBrowser (will be empty for new instance)
+            SyncInstalledModsToModBrowser();
+
+            RefreshInstanceMenuItems();
+            UpdateInstanceMenuChecks();
+
+            // Refresh the instance browser
+            _instanceBrowserViewModel?.RefreshInstances();
+
+            WpfMessageBox.Show(
+                $"Instance '{instance.Name}' created and activated.\n\nPath: {instance.Path}\n\nThe mod list now shows this instance's mods (empty for a new instance).",
+                "Simple VS Manager",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show(
+                $"Failed to create instance: {ex.Message}",
+                "Simple VS Manager",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private async Task DeleteInstanceAsync(GameInstance instance)
+    {
+        var result = WpfMessageBox.Show(
+            $"Are you sure you want to delete the instance '{instance.Name}'?\n\nThis will permanently delete all mods, saves, and configurations in this instance.",
+            "Delete Instance",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes) return;
+
+        var wasActive = _instanceService.ActiveInstance?.Id == instance.Id;
+
+        try
+        {
+            _instanceService.DeleteInstance(instance.Id, deleteFiles: true);
+
+            // Refresh the instance browser
+            _instanceBrowserViewModel?.RefreshInstances();
+
+            // If we deleted the active instance, switch back to profile
+            if (wasActive)
+            {
+                _instanceService.SetActiveInstance(null);
+                _dataDirectory = _userConfiguration.DataDirectory;
+                await ReloadViewModelAsync();
+                SyncInstalledModsToModBrowser();
+            }
+
+            RefreshInstanceMenuItems();
+            UpdateInstanceMenuChecks();
+
+            WpfMessageBox.Show(
+                $"Instance '{instance.Name}' has been deleted.",
+                "Simple VS Manager",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show(
+                $"Failed to delete instance: {ex.Message}",
+                "Simple VS Manager",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void ShowInstanceDetailsDialog(InstanceCardViewModel card)
+    {
+        // TODO: Implement proper instance details dialog
+        // For now, show a simple info message
+        var instance = card.Instance;
+        var message = $"Instance: {instance.Name}\n" +
+                      $"Path: {instance.Path}\n" +
+                      $"Created: {instance.Created.ToLocalTime():g}\n" +
+                      $"Last Played: {(instance.LastPlayed?.ToLocalTime().ToString("g") ?? "Never")}\n" +
+                      $"Playtime: {card.PlaytimeDisplay}\n" +
+                      $"Game Version: {card.GameVersion}\n" +
+                      $"Mods: {card.ModCountDisplay}\n" +
+                      (string.IsNullOrWhiteSpace(instance.Notes) ? "" : $"\nNotes: {instance.Notes}");
+
+        WpfMessageBox.Show(
+            message,
+            "Instance Details",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
     private void InitializeVotesCacheWatcher()
     {
         try
@@ -2961,6 +3173,9 @@ public partial class MainWindow : Window
             // Step 13: ModBrowser-specific cleanup
             // Update the ModBrowserViewModel to mark as installed and remove from search
             AddModToInstalledAndRemoveFromSearch(mod.ModId);
+
+            // Step 14: Check for missing dependencies and offer to install them
+            await CheckAndOfferDependencyInstallAsync(targetPath, modViewModel.DisplayName ?? modViewModel.ModId ?? "Unknown");
         }
         catch (OperationCanceledException)
         {
@@ -5849,6 +6064,240 @@ public partial class MainWindow : Window
         return mod.LatestRelease;
     }
 
+    /// <summary>
+    /// Checks if a newly installed mod has missing dependencies and offers to install them.
+    /// </summary>
+    private async Task CheckAndOfferDependencyInstallAsync(string installedModPath, string modDisplayName)
+    {
+        try
+        {
+            // Only check zip files
+            if (!File.Exists(installedModPath) || !installedModPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            // Extract dependencies from the installed mod
+            var dependencies = DependencyResolverService.ExtractDependenciesFromZip(installedModPath);
+            if (dependencies.Count == 0)
+                return;
+
+            // Resolve what's missing
+            var resolution = await _dependencyResolverService.ResolveAllDependenciesAsync(
+                dependencies,
+                modId => _viewModel?.FindInstalledModById(modId),
+                _viewModel?.InstalledGameVersion,
+                _userConfiguration.RequireExactVsVersionMatch,
+                new Progress<string>(msg => _viewModel?.ReportStatus(msg))).ConfigureAwait(true);
+
+            if (!resolution.HasDependenciesToInstall)
+                return;
+
+            // Build confirmation message
+            var sb = new StringBuilder();
+            sb.AppendLine($"The mod '{modDisplayName}' requires the following dependencies:");
+            sb.AppendLine();
+
+            foreach (var dep in resolution.DependenciesToInstall.Take(10))
+            {
+                var action = dep.NeedsUpdate ? "update" : "install";
+                var versionInfo = string.IsNullOrWhiteSpace(dep.AvailableVersion) ? "" : $" ({dep.AvailableVersion})";
+                sb.AppendLine($"  • {dep.DisplayName}{versionInfo} - {action}");
+            }
+
+            if (resolution.DependenciesToInstall.Count > 10)
+                sb.AppendLine($"  ... and {resolution.DependenciesToInstall.Count - 10} more");
+
+            if (resolution.UnresolvableDependencies.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("The following dependencies could not be found:");
+                foreach (var unresolved in resolution.UnresolvableDependencies.Take(5))
+                    sb.AppendLine($"  • {unresolved}");
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("Would you like to install the available dependencies now?");
+
+            var result = WpfMessageBox.Show(
+                sb.ToString(),
+                "Install Dependencies",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result != MessageBoxResult.Yes)
+                return;
+
+            // Install each dependency
+            await InstallResolvedDependenciesAsync(resolution.DependenciesToInstall);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[CheckAndOfferDependencyInstallAsync] Error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Installs a list of resolved dependencies.
+    /// </summary>
+    private async Task InstallResolvedDependenciesAsync(IReadOnlyList<DependencyResolverService.DependencyToInstall> dependencies)
+    {
+        if (dependencies.Count == 0) return;
+
+        _isModUpdateInProgress = true;
+        UpdateSelectedModButtons();
+
+        var installed = 0;
+        var failed = new List<string>();
+
+        try
+        {
+            foreach (var dep in dependencies)
+            {
+                if (dep.Release == null || dep.DatabaseInfo == null)
+                {
+                    failed.Add($"{dep.DisplayName}: No release available");
+                    continue;
+                }
+
+                _viewModel?.ReportStatus($"Installing dependency: {dep.DisplayName}...");
+
+                var dependencyInfo = new ModDependencyInfo(dep.ModId, dep.RequiredVersion ?? "");
+                var installedMod = _viewModel?.FindInstalledModById(dep.ModId);
+
+                var result = await InstallOrUpdateDependencyAsync(dependencyInfo, installedMod).ConfigureAwait(true);
+
+                if (result.Success)
+                {
+                    installed++;
+                    _viewModel?.ReportStatus(result.Message);
+                }
+                else
+                {
+                    failed.Add($"{dep.DisplayName}: {result.Message}");
+                    _viewModel?.ReportStatus($"Failed: {dep.DisplayName} - {result.Message}", true);
+                }
+            }
+
+            // Refresh to pick up the new mods
+            await RefreshModsAsync().ConfigureAwait(true);
+
+            // Report results
+            if (failed.Count == 0)
+            {
+                _viewModel?.ReportStatus($"Installed {installed} dependencies successfully.");
+            }
+            else
+            {
+                var msg = new StringBuilder();
+                msg.AppendLine($"Installed {installed} of {dependencies.Count} dependencies.");
+                msg.AppendLine();
+                msg.AppendLine("Failed:");
+                foreach (var f in failed.Take(5))
+                    msg.AppendLine($"  • {f}");
+
+                WpfMessageBox.Show(msg.ToString(), "Simple VS Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            // Check for nested dependencies (recursive)
+            // After installing, new mods might have their own dependencies
+            var modsWithMissingDeps = _viewModel?.GetInstalledModsSnapshot()
+                .Where(m => m.MissingDependencies.Count > 0 || m.DependencyHasErrors)
+                .ToList() ?? new List<ModListItemViewModel>();
+
+            if (modsWithMissingDeps.Count > 0)
+            {
+                var nestedResult = WpfMessageBox.Show(
+                    $"There are still {modsWithMissingDeps.Count} mods with missing dependencies.\n\nWould you like to fix them as well?",
+                    "Additional Dependencies",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (nestedResult == MessageBoxResult.Yes)
+                {
+                    await FixAllDependenciesAsync();
+                }
+            }
+        }
+        finally
+        {
+            _isModUpdateInProgress = false;
+            UpdateSelectedModButtons();
+        }
+    }
+
+    /// <summary>
+    /// Fixes all missing dependencies for all mods.
+    /// </summary>
+    private async Task FixAllDependenciesAsync()
+    {
+        var modsWithMissingDeps = _viewModel?.GetInstalledModsSnapshot()
+            .Where(m => m.MissingDependencies.Count > 0 || m.DependencyHasErrors)
+            .ToList();
+
+        if (modsWithMissingDeps == null || modsWithMissingDeps.Count == 0)
+        {
+            WpfMessageBox.Show("All dependencies are satisfied.", "Simple VS Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var allDependencies = new List<ModDependencyInfo>();
+        foreach (var mod in modsWithMissingDeps)
+        {
+            allDependencies.AddRange(mod.Dependencies.Where(d => !d.IsGameOrCoreDependency));
+        }
+
+        if (allDependencies.Count == 0)
+            return;
+
+        _viewModel?.ReportStatus($"Resolving {allDependencies.Count} dependencies...");
+
+        var resolution = await _dependencyResolverService.ResolveAllDependenciesAsync(
+            allDependencies,
+            modId => _viewModel?.FindInstalledModById(modId),
+            _viewModel?.InstalledGameVersion,
+            _userConfiguration.RequireExactVsVersionMatch,
+            new Progress<string>(msg => _viewModel?.ReportStatus(msg))).ConfigureAwait(true);
+
+        if (!resolution.HasDependenciesToInstall)
+        {
+            if (resolution.UnresolvableDependencies.Count > 0)
+            {
+                var msg = new StringBuilder();
+                msg.AppendLine("Could not resolve the following dependencies:");
+                foreach (var u in resolution.UnresolvableDependencies.Take(10))
+                    msg.AppendLine($"  • {u}");
+                WpfMessageBox.Show(msg.ToString(), "Simple VS Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            else
+            {
+                WpfMessageBox.Show("All dependencies are already satisfied.", "Simple VS Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            return;
+        }
+
+        // Show what will be installed
+        var sb = new StringBuilder();
+        sb.AppendLine($"The following {resolution.DependenciesToInstall.Count} dependencies will be installed:");
+        sb.AppendLine();
+
+        foreach (var dep in resolution.DependenciesToInstall.Take(15))
+        {
+            var action = dep.NeedsUpdate ? "update" : "install";
+            sb.AppendLine($"  • {dep.DisplayName} - {action}");
+        }
+
+        if (resolution.DependenciesToInstall.Count > 15)
+            sb.AppendLine($"  ... and {resolution.DependenciesToInstall.Count - 15} more");
+
+        sb.AppendLine();
+        sb.AppendLine("Continue?");
+
+        var result = WpfMessageBox.Show(sb.ToString(), "Fix All Dependencies", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        await InstallResolvedDependenciesAsync(resolution.DependenciesToInstall);
+    }
+
     private async void UpdateModButton_OnClick(object sender, RoutedEventArgs e)
     {
         if (_isModUpdateInProgress) return;
@@ -5964,6 +6413,17 @@ public partial class MainWindow : Window
 
         await CreateAutomaticBackupAsync("ModsUpdated").ConfigureAwait(true);
         await UpdateModsAsync(selectedMods, true, selectedOverrides).ConfigureAwait(true);
+    }
+
+    private async void FixAllDependenciesMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null)
+        {
+            WpfMessageBox.Show("No mods loaded.", "Simple VS Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        await FixAllDependenciesAsync();
     }
 
     private async void CheckModsCompatibilityMenuItem_OnClick(object sender, RoutedEventArgs e)
@@ -8022,6 +8482,246 @@ public partial class MainWindow : Window
             UpdateDeveloperProfileMenuChecks();
     }
 
+    #region Instance Management
+
+    private void InstancesMenuItem_OnSubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        RefreshInstanceMenuItems();
+        UpdateInstanceMenuChecks();
+    }
+
+    private async void CreateInstanceMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new TextInputDialog("Create New Instance", "Instance name:", "My Instance");
+        dialog.Owner = this;
+        if (dialog.ShowDialog() != true) return;
+
+        var instanceName = dialog.InputText;
+        if (string.IsNullOrWhiteSpace(instanceName))
+        {
+            WpfMessageBox.Show("Instance name cannot be empty.", "Simple VS Manager",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            // Pass the current profile's data directory to copy player session from
+            var sourceDataDirectory = _userConfiguration.DataDirectory;
+            var instance = _instanceService.CreateInstance(instanceName, sourceDataDirectory);
+
+            // Switch to the new instance
+            _instanceService.SetActiveInstance(instance.Id);
+            _dataDirectory = instance.Path;
+            _cloudModlistStore = null;
+            await ReloadViewModelAsync();
+
+            // Sync installed mods to ModBrowser (will be empty for new instance)
+            SyncInstalledModsToModBrowser();
+
+            RefreshInstanceMenuItems();
+            UpdateInstanceMenuChecks();
+
+            WpfMessageBox.Show(
+                $"Instance '{instance.Name}' created and activated.\n\nPath: {instance.Path}\n\nThe mod list now shows this instance's mods (empty for a new instance).",
+                "Simple VS Manager",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show($"Failed to create instance:\n{ex.Message}", "Simple VS Manager",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void DeleteInstanceMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        var activeInstance = _instanceService.ActiveInstance;
+        if (activeInstance == null)
+        {
+            WpfMessageBox.Show("No instance is currently active to delete.\n\nSelect an instance from the menu first.",
+                "Simple VS Manager",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var result = WpfMessageBox.Show(
+            $"Delete the active instance '{activeInstance.Name}'?\n\nPath: {activeInstance.Path}\n\nDo you also want to delete the instance folder and all its contents (mods, saves, configs)?",
+            "Simple VS Manager",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Warning);
+
+        if (result == MessageBoxResult.Cancel) return;
+
+        var deleteFiles = result == MessageBoxResult.Yes;
+        _instanceService.DeleteInstance(activeInstance.Id, deleteFiles);
+
+        RefreshInstanceMenuItems();
+        UpdateInstanceMenuChecks();
+    }
+
+    private void OpenInstanceFolderMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        var activeInstance = _instanceService.ActiveInstance;
+        if (activeInstance == null)
+        {
+            WpfMessageBox.Show("No instance is currently active.", "Simple VS Manager",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        _instanceService.OpenInstanceFolder(activeInstance.Id);
+    }
+
+    private void SetInstancesRootMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        using var dialog = new WinForms.FolderBrowserDialog
+        {
+            Description = "Select the folder where instances will be stored",
+            UseDescriptionForTitle = true,
+            ShowNewFolderButton = true
+        };
+
+        if (!string.IsNullOrWhiteSpace(_instanceService.InstancesRootPath) &&
+            Directory.Exists(_instanceService.InstancesRootPath))
+            dialog.SelectedPath = _instanceService.InstancesRootPath;
+
+        if (dialog.ShowDialog() != WinForms.DialogResult.OK) return;
+
+        _instanceService.InstancesRootPath = dialog.SelectedPath;
+        WpfMessageBox.Show(
+            $"Instances root folder set to:\n{dialog.SelectedPath}",
+            "Simple VS Manager",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+
+        RefreshInstanceMenuItems();
+    }
+
+    private async void UseProfileMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_instanceService.ActiveInstance == null)
+        {
+            // Already using profile, nothing to do
+            UpdateInstanceMenuChecks();
+            return;
+        }
+
+        // Deactivate instance and go back to profile's data directory
+        _instanceService.SetActiveInstance(null);
+
+        var profileDataDirectory = _userConfiguration.DataDirectory;
+        if (!string.IsNullOrWhiteSpace(profileDataDirectory))
+        {
+            _dataDirectory = profileDataDirectory;
+            _cloudModlistStore = null;
+            await ReloadViewModelAsync();
+
+            // Sync installed mods to ModBrowser so it knows what's installed in the profile
+            SyncInstalledModsToModBrowser();
+        }
+
+        UpdateInstanceMenuChecks();
+    }
+
+    private void RefreshInstanceMenuItems()
+    {
+        if (InstancesMenuItem is null || CreateInstanceMenuItem is null) return;
+
+        foreach (var item in _instanceMenuItems) item.Click -= InstanceMenuItem_OnClick;
+
+        _instanceMenuItems.Clear();
+
+        InstancesMenuItem.Items.Clear();
+
+        // Add "Use Profile" option first
+        if (UseProfileMenuItem is not null)
+        {
+            UseProfileMenuItem.IsChecked = _instanceService.ActiveInstance == null;
+            InstancesMenuItem.Items.Add(UseProfileMenuItem);
+            InstancesMenuItem.Items.Add(new Separator());
+        }
+
+        InstancesMenuItem.Items.Add(CreateInstanceMenuItem);
+
+        if (DeleteInstanceMenuItem is not null) InstancesMenuItem.Items.Add(DeleteInstanceMenuItem);
+
+        if (OpenInstanceFolderMenuItem is not null) InstancesMenuItem.Items.Add(OpenInstanceFolderMenuItem);
+
+        if (SetInstancesRootMenuItem is not null) InstancesMenuItem.Items.Add(SetInstancesRootMenuItem);
+
+        var instances = _instanceService.GetAllInstances();
+
+        if (DeleteInstanceMenuItem is not null)
+            DeleteInstanceMenuItem.IsEnabled = _instanceService.ActiveInstance != null;
+
+        if (OpenInstanceFolderMenuItem is not null)
+            OpenInstanceFolderMenuItem.IsEnabled = _instanceService.ActiveInstance != null;
+
+        if (instances.Count > 0) InstancesMenuItem.Items.Add(new Separator());
+
+        var activeInstance = _instanceService.ActiveInstance;
+
+        foreach (var instance in instances)
+        {
+            var menuItem = new MenuItem
+            {
+                Header = instance.Name,
+                Tag = instance.Id,
+                IsCheckable = true,
+                Height = 35,
+                IsChecked = activeInstance != null &&
+                            string.Equals(instance.Id, activeInstance.Id, StringComparison.OrdinalIgnoreCase)
+            };
+
+            menuItem.Click += InstanceMenuItem_OnClick;
+            InstancesMenuItem.Items.Add(menuItem);
+            _instanceMenuItems.Add(menuItem);
+        }
+    }
+
+    private void UpdateInstanceMenuChecks()
+    {
+        var activeInstance = _instanceService.ActiveInstance;
+
+        // Update "Use Profile" checkbox
+        if (UseProfileMenuItem is not null)
+            UseProfileMenuItem.IsChecked = activeInstance == null;
+
+        foreach (var item in _instanceMenuItems)
+            if (item.Tag is string instanceId)
+                item.IsChecked = activeInstance != null &&
+                                 string.Equals(instanceId, activeInstance.Id, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async void InstanceMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: string instanceId }) return;
+
+        if (!_instanceService.SetActiveInstance(instanceId))
+        {
+            UpdateInstanceMenuChecks();
+            return;
+        }
+
+        UpdateInstanceMenuChecks();
+
+        var instance = _instanceService.ActiveInstance;
+        if (instance != null)
+        {
+            // Update the data directory to the instance path and reload the view model
+            _dataDirectory = instance.Path;
+            _cloudModlistStore = null;
+            await ReloadViewModelAsync();
+
+            // Sync installed mods to ModBrowser so it knows what's installed in this instance
+            SyncInstalledModsToModBrowser();
+        }
+    }
+
+    #endregion
+
     private void ExitMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
         Close();
@@ -8074,7 +8774,11 @@ public partial class MainWindow : Window
 
         if (!await TryEnsureDataBackupBeforeLaunchAsync().ConfigureAwait(true)) return;
 
-        if (!string.IsNullOrWhiteSpace(_customShortcutPath))
+        // Check if an instance is active - if so, use its path (skip custom shortcut)
+        var activeInstance = _instanceService.ActiveInstance;
+
+        // Only use custom shortcut if NO instance is active
+        if (activeInstance == null && !string.IsNullOrWhiteSpace(_customShortcutPath))
         {
             if (!File.Exists(_customShortcutPath))
             {
@@ -8106,18 +8810,24 @@ public partial class MainWindow : Window
 
             return;
         }
+        var launchDataPath = activeInstance?.Path ?? _dataDirectory;
+        var launchGameDirectory = activeInstance?.GameDirectory ?? _gameDirectory;
 
-        if (string.IsNullOrWhiteSpace(_dataDirectory) || !Directory.Exists(_dataDirectory))
+        if (string.IsNullOrWhiteSpace(launchDataPath) || !Directory.Exists(launchDataPath))
         {
+            var message = activeInstance != null
+                ? $"The instance folder could not be located:\n{activeInstance.Path}"
+                : "The VintagestoryData folder could not be located. Please verify it from File > Set Data Folder before launching the game.";
+
             WpfMessageBox.Show(
-                "The VintagestoryData folder could not be located. Please verify it from File > Set Data Folder before launching the game.",
+                message,
                 "Simple VS Manager",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
             return;
         }
 
-        var executable = GameDirectoryLocator.FindExecutable(_gameDirectory);
+        var executable = GameDirectoryLocator.FindExecutable(launchGameDirectory);
         if (executable is null)
         {
             WpfMessageBox.Show(
@@ -8137,9 +8847,15 @@ public partial class MainWindow : Window
                 UseShellExecute = false
             };
             startInfo.ArgumentList.Add("--dataPath");
-            startInfo.ArgumentList.Add(_dataDirectory);
+            startInfo.ArgumentList.Add(launchDataPath);
 
             Process.Start(startInfo);
+
+            // Update last played time for the instance
+            if (activeInstance != null)
+            {
+                _instanceService.UpdateLastPlayed();
+            }
         }
         catch (Exception ex)
         {

@@ -172,6 +172,11 @@
                                 Height="35"
                                 Click="SetInstancesRootMenuItem_OnClick"
                                 Header="Set instances folder..." />
+                            <MenuItem
+                                x:Name="ManageBaseModsMenuItem"
+                                Height="35"
+                                Click="ManageBaseModsMenuItem_OnClick"
+                                Header="Manage base mods..." />
                             <Separator />
                         </MenuItem>
                         <MenuItem

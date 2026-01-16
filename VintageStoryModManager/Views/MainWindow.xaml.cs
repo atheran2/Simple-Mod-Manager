@@ -8572,7 +8572,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void DeleteInstanceMenuItem_OnClick(object sender, RoutedEventArgs e)
+    private async void DeleteInstanceMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
         var activeInstance = _instanceService.ActiveInstance;
         if (activeInstance == null)
@@ -8591,11 +8591,39 @@ public partial class MainWindow : Window
 
         if (result == MessageBoxResult.Cancel) return;
 
+        var instanceName = activeInstance.Name;
         var deleteFiles = result == MessageBoxResult.Yes;
-        _instanceService.DeleteInstance(activeInstance.Id, deleteFiles);
 
-        RefreshInstanceMenuItems();
-        UpdateInstanceMenuChecks();
+        try
+        {
+            _instanceService.DeleteInstance(activeInstance.Id, deleteFiles);
+
+            // Switch back to profile mode since we deleted the active instance
+            _instanceService.SetActiveInstance(null);
+            _dataDirectory = _userConfiguration.DataDirectory;
+            await ReloadViewModelAsync();
+            SyncInstalledModsToModBrowser();
+
+            // Refresh the instance browser if it exists
+            _instanceBrowserViewModel?.RefreshInstances();
+
+            RefreshInstanceMenuItems();
+            UpdateInstanceMenuChecks();
+
+            WpfMessageBox.Show(
+                $"Instance '{instanceName}' has been deleted.",
+                "Simple VS Manager",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show(
+                $"Failed to delete instance: {ex.Message}",
+                "Simple VS Manager",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
     }
 
     private void OpenInstanceFolderMenuItem_OnClick(object sender, RoutedEventArgs e)
@@ -8634,6 +8662,12 @@ public partial class MainWindow : Window
             MessageBoxImage.Information);
 
         RefreshInstanceMenuItems();
+    }
+
+    private void ManageBaseModsMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Dialogs.BaseModsDialog(this, _instanceService);
+        dialog.ShowDialog();
     }
 
     private async void UseProfileMenuItem_OnClick(object sender, RoutedEventArgs e)
@@ -8687,6 +8721,8 @@ public partial class MainWindow : Window
         if (OpenInstanceFolderMenuItem is not null) InstancesMenuItem.Items.Add(OpenInstanceFolderMenuItem);
 
         if (SetInstancesRootMenuItem is not null) InstancesMenuItem.Items.Add(SetInstancesRootMenuItem);
+
+        if (ManageBaseModsMenuItem is not null) InstancesMenuItem.Items.Add(ManageBaseModsMenuItem);
 
         var instances = _instanceService.GetAllInstances();
 

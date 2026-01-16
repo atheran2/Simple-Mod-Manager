@@ -1,0 +1,101 @@
+<Window x:Class="VintageStoryModManager.Views.Dialogs.BaseModsDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Manage Base Mods"
+        Width="550"
+        Height="450"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip"
+        WindowStyle="SingleBorderWindow"
+        ShowInTaskbar="False"
+        Loaded="Window_OnLoaded"
+        Background="{DynamicResource Brush.Window.Shell.Background.Solid}">
+    <Grid Margin="20"
+          Background="{DynamicResource Brush.Panel.Primary.Background.Solid}"
+          TextElement.Foreground="{DynamicResource Brush.Text.Primary}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Description -->
+        <TextBlock Grid.Row="0"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,16">
+            <Run>Base mods are automatically copied to new instances when they are created.</Run>
+            <LineBreak />
+            <Run>Use this for library mods and must-have QoL mods.</Run>
+        </TextBlock>
+
+        <!-- Option to enable/disable base mods -->
+        <CheckBox x:Name="CopyBaseModsCheckBox"
+                  Grid.Row="1"
+                  Content="Copy base mods when creating new instances"
+                  Margin="0,0,0,12"
+                  Checked="CopyBaseModsCheckBox_Changed"
+                  Unchecked="CopyBaseModsCheckBox_Changed" />
+
+        <!-- Mods list -->
+        <Border Grid.Row="2"
+                BorderBrush="{DynamicResource Brush.Dialog.TextBox.Border}"
+                BorderThickness="1"
+                Background="{DynamicResource Brush.Dialog.TextBox.Background}">
+            <Grid>
+                <ListBox x:Name="ModsListBox"
+                         SelectionMode="Extended"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         Foreground="{DynamicResource Brush.Text.Primary}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" Margin="4,2" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock x:Name="EmptyText"
+                           Text="No base mods configured. Add mod files to get started."
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Opacity="0.6"
+                           Visibility="Collapsed" />
+            </Grid>
+        </Border>
+
+        <!-- Action buttons -->
+        <StackPanel Grid.Row="3"
+                    Orientation="Horizontal"
+                    Margin="0,12,0,0">
+            <Button x:Name="AddModButton"
+                    Content="Add Mod..."
+                    MinWidth="88"
+                    Margin="0,0,8,0"
+                    Click="AddModButton_OnClick"
+                    ToolTip="Add a mod file to base mods" />
+            <Button x:Name="RemoveModButton"
+                    Content="Remove"
+                    MinWidth="88"
+                    Margin="0,0,8,0"
+                    Click="RemoveModButton_OnClick"
+                    IsEnabled="False"
+                    ToolTip="Remove selected mods from base mods" />
+            <Button x:Name="OpenFolderButton"
+                    Content="Open Folder"
+                    MinWidth="88"
+                    Click="OpenFolderButton_OnClick"
+                    ToolTip="Open the base mods folder in Explorer" />
+        </StackPanel>
+
+        <!-- Close button -->
+        <StackPanel Grid.Row="4"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,18,0,0">
+            <Button Content="Close"
+                    MinWidth="88"
+                    IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

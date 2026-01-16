@@ -1,7 +1,7 @@
 # Instance System Implementation Plan
 
 ---
-## 📊 IMPLEMENTATION STATUS SUMMARY (Updated 2026-01-14)
+## 📊 IMPLEMENTATION STATUS SUMMARY (Updated 2026-01-16)
 
 ### ✅ COMPLETED (MVP + New Features)
 **Instance System (MVP):**
@@ -44,41 +44,35 @@
 - Recursive resolution (A→B→C all at once)
 - Nested dependency check after install
 
-### ⚠️ PARTIALLY DONE
-- Multiple VS versions: Model supports it, no UI to configure
+**Mod Description Modal:** ✅ COMPLETE (2026-01-14)
+- Click any mod card in browser to view full HTML description
+- Resizable dialog (800x600) with dark theme styling
+- Renders HTML content from API with proper formatting
+- External links open in default browser
+- "View on Website" button for full mod page
 
-### ❌ REMAINING WORK
-- **Instance Rename** from UI (currently must edit via dialog)
-- **Base Mods Directory** (5.2) - Shared mods auto-copied to new instances
-- **Migration Wizard** - Convert profiles to instances
-- **Shared Mod Library** - Central cache with copy/symlink
-- **Modpack Import/Export**
-- UI indicator showing "Install to [Instance Name]"
-- Version compatibility warnings
+**Mod Browser Filter Improvements:** ✅ COMPLETE (2026-01-14)
+- Default filter changed to "Not Installed" (hides already-installed mods)
+- Per-instance aware (filters based on current instance's mods)
 
-### 💭 MAYBE (Complex/Uncertain Feasibility)
-- **Auto-download game versions** - Download different VS versions per instance from VS account
-  - Requires VS account authentication (no public API)
-  - Would need to reverse-engineer download system
-  - Complex undertaking, may not be feasible
+**Portable Paths:** ✅ COMPLETE (2026-01-16)
+- Instance paths stored as relative when under app folder
+- Moving app folder auto-detects and uses new location
+- Instance.json path overridden at load time with actual directory location
 
-### 💡 SUGGESTED FEATURES (Phase 6) - Future
-- Instance Templates/Presets (6.1)
-- Instance Groups/Categories (6.2)
-- Mod Health/Diagnostics (G.1) - Batch scan for broken mods
-- Per-Instance Backup Integration (6.4)
-- Quick Switching Hotkeys (6.5)
-- Statistics Dashboard (6.6)
-- Instance Comparison View (6.8)
-
-### 🐛 KNOWN BUGS
+### 🐛 KNOWN BUGS / UX ISSUES
 1. ~~**Creating new instance does not set it as active**~~ ✅ FIXED
 
-2. **Deleting active instance doesn't switch away properly** - When deleting the currently active instance, the UI doesn't switch to another instance or back to profile.
-   - **Status**: Can now be fixed (Instance Browser exists)
-   - **Location**: `DeleteInstanceMenuItem_OnClick` in MainWindow.xaml.cs
+2. ~~**Deleting active instance doesn't switch away properly**~~ ✅ FIXED (2026-01-16)
+   - ✅ Instance Browser delete (`DeleteInstanceAsync`) - properly switches back to profile
+   - ✅ Menu delete (`DeleteInstanceMenuItem_OnClick`) - now switches back to profile after delete
 
 3. ~~**App startup doesn't load last active instance**~~ ✅ FIXED
+
+4. **Base Mods Dialog UX is poor** - Currently requires picking zip files manually
+   - Should allow selecting from already-installed mods in current instance
+   - Should have access to mod browser to download directly to base mods
+   - **Status**: Low priority, workaround is to use "Open Folder" and copy files manually
 
 ---
 
@@ -601,7 +595,7 @@ MainWindow's `TryGetInstallTargetPath()` uses `_dataDirectory` which is set to t
 
 ---
 
-### 5.2 Base Mods Directory ❌ NOT IMPLEMENTED
+### 5.2 Base Mods Directory ✅ COMPLETE (2026-01-16)
 **Goal**: Optional shared "base" folder with mods that auto-copy to new instances
 
 **Concept**:
@@ -616,22 +610,28 @@ MainWindow's `TryGetInstallTargetPath()` uses `_dataDirectory` which is set to t
     └── Mods/
 ```
 
-**Behavior**:
-- When creating a new instance, copy all mods from `_BaseMods/` to the new instance's `Mods/` folder
-- Deleting a mod from an instance does NOT affect `_BaseMods/`
-- `_BaseMods/` is managed separately (add/remove via dedicated UI or folder)
-- Optional: Checkbox on instance creation "Include base mods"
+**Implemented**:
+- ✅ When creating a new instance, copies all mods from `_BaseMods/` to the new instance's `Mods/` folder
+- ✅ Deleting a mod from an instance does NOT affect `_BaseMods/`
+- ✅ `_BaseMods/` is managed separately via dedicated dialog
+- ✅ Checkbox to enable/disable auto-copy on instance creation (defaults to enabled)
 
 **UI Elements**:
-- "Manage Base Mods" menu item or button
-- Shows list of mods in `_BaseMods/`
-- Add from file, remove, open folder
-- Optional: "Add to Base Mods" context menu on installed mods
+- ✅ "Manage Base Mods..." menu item in File > Instances menu
+- ✅ Dialog shows list of mods in `_BaseMods/`
+- ✅ Add from file (supports multi-select), remove selected, open folder buttons
+- [ ] "Add to Base Mods" context menu on installed mods (not implemented - users can manually add)
 
 **Configuration**:
-- `BaseMods` path in `instances-config.json`
-- Default: `{InstancesRoot}/_BaseMods/`
-- Option to enable/disable auto-copy on instance creation
+- ✅ `copyBaseModsOnCreate` setting in `instances-config.json`
+- ✅ Default path: `{InstancesRoot}/_BaseMods/`
+
+**Files created/modified**:
+- `Services/InstanceService.cs` - Added `BaseModsPath`, `CopyBaseModsOnCreate`, `CopyBaseModsToInstance()`, `GetBaseModFiles()`, `AddModToBaseMods()`, `RemoveModFromBaseMods()`, `OpenBaseModsFolder()`
+- `Views/Dialogs/BaseModsDialog.xaml` - New dialog for managing base mods
+- `Views/Dialogs/BaseModsDialog.xaml.cs` - Dialog code-behind
+- `Views/MainWindow.xaml` - Added "Manage base mods..." menu item
+- `Views/MainWindow.xaml.cs` - Added `ManageBaseModsMenuItem_OnClick` handler
 
 **Use cases**:
 - Library mods everyone needs (VTMLlib, etc.)
@@ -640,103 +640,7 @@ MainWindow's `TryGetInstallTargetPath()` uses `_dataDirectory` which is set to t
 
 ---
 
-## Phase 6: Developer Suggestions (Future Ideas)
-
-### 6.1 Instance Templates / Presets
-**Goal**: Save an instance configuration as a template for quick creation
-
-**Concept**:
-- "Save as Template" option on an instance
-- Templates store: mod list (with versions), configs, settings
-- "Create from Template" when making new instance
-- Templates could be shared as files
-
----
-
-### 6.2 Instance Groups / Categories
-**Goal**: Organize instances into groups (like mod categories)
-
-**Use cases**:
-- Group by VS version (1.19.x, 1.20.x)
-- Group by play style (Hardcore, Creative, Multiplayer)
-- Group by modpack source
-
----
-
-### 6.3 Instance Health / Diagnostics
-**Goal**: Quick status check for each instance
-
-**Features**:
-- Detect broken/missing mods
-- Version compatibility warnings (mod vs VS version)
-- Mod conflict detection
-- "Repair" option to re-download missing mods from database
-
----
-
-### 6.4 Instance Sync / Backup Integration
-**Goal**: Per-instance backup and sync options
-
-**Features**:
-- Automatic backup before launching (already exists for profiles)
-- Cloud sync support (OneDrive, Google Drive folder)
-- Backup history per instance
-- Restore instance from backup
-
----
-
-### 6.5 Quick Instance Switching Hotkey
-**Goal**: Keyboard shortcut to quickly switch instances
-
-**Implementation**:
-- Ctrl+1, Ctrl+2, etc. for first N instances
-- Or Ctrl+Shift+I to open instance switcher popup
-
----
-
-### 6.6 Instance Statistics Dashboard
-**Goal**: Show playtime, mod usage stats per instance
-
-**Features**:
-- Total playtime tracking (already have `TotalPlaytimeSeconds` in model)
-- Most used mods across instances
-- Instance creation/usage timeline
-
----
-
-### ~~6.7 Mod Dependency Auto-Resolution for Instances~~ → Moved to G.2
-See **G.2 Enhanced Dependency Resolution** in General App Features section.
-
----
-
-### 6.8 Instance Comparison View
-**Goal**: Compare mods between two instances side-by-side
-
-**Use cases**:
-- See what's different between working and broken instance
-- Plan mod migration between instances
-- Identify version differences for same mod
-
----
-
 ## General App Features (Not Instance-Specific)
-
-### G.1 Mod Health / Diagnostics ❌ NOT IMPLEMENTED
-**Goal**: Quick status check for all installed mods
-
-**Features**:
-- Scan all mods for broken/corrupt zip files
-- Detect mods with missing dependencies (batch operation)
-- Version compatibility warnings (mod version vs game version)
-- Mod conflict detection (duplicate modIds, incompatible mods)
-- "Repair All" option to fix all issues at once
-
-**Implementation notes**:
-- `ModDiscoveryService` already detects `MissingDependencies` and `DependencyHasErrors`
-- Could add a "Health Check" menu item or toolbar button
-- Show results in a dialog with fix options
-
----
 
 ### G.2 Automatic Dependency Resolution ✅ IMPLEMENTED
 **Goal**: Automatically resolve dependencies when installing mods (like Prism Launcher)
@@ -852,9 +756,8 @@ See **G.2 Enhanced Dependency Resolution** in General App Features section.
 
 ---
 
-## 📋 RECOMMENDED NEXT STEPS (Priority Order)
+## 📋 COMPLETED FEATURES
 
-### ✅ COMPLETED
 1. ~~**Fix instance activation bug**~~ ✅
 2. ~~**Fix app startup not loading last instance**~~ ✅
 3. ~~**Instance Browser UI** (5.1)~~ ✅ - Card-based view with launch/details
@@ -864,21 +767,6 @@ See **G.2 Enhanced Dependency Resolution** in General App Features section.
 7. ~~**Context menu theming**~~ ✅ - Override ModernWpf styles
 8. ~~**Button theming**~~ ✅ - Use IMM.ButtonBaseStyle
 9. ~~**Instances tab as default**~~ ✅ - Opens on launch
-
-### Next Up
-10. **Fix: Deleting active instance** - Switch away properly when deleting
-11. **Instance Rename** from UI (name edit works in dialog, but no dedicated rename)
-12. **UI indicator** - Show "Install to [Instance Name]" somewhere visible
-
-### Medium-term
-13. **Base Mods Directory** (5.2) - Shared mods for new instances
-14. **Version compatibility warnings** - Warn if mod incompatible with VS version
-
-### Long-term (Nice to Have)
-15. **Mod Health/Diagnostics** (G.1) - Batch scan and repair
-16. **Modpack Import/Export** (4.2)
-17. **Migration Wizard** - Convert profiles to instances
-18. **Shared Mod Library** (4.1) - Central cache
-
-### Maybe (Complex)
-19. **Auto-download game versions** - Requires VS account auth, may not be feasible
+10. ~~**Fix: Deleting active instance**~~ ✅ (2026-01-16) - Both browser and menu delete now switch away properly
+11. ~~**Base Mods Directory** (5.2)~~ ✅ (2026-01-16) - Shared mods auto-copied to new instances
+12. ~~**Portable Paths**~~ ✅ (2026-01-16) - App folder can be moved without breaking instances

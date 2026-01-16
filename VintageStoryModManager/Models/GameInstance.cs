@@ -20,8 +20,10 @@ public sealed class GameInstance
 
     /// <summary>
     ///     Full path to the instance folder (contains Mods, Saves, ModConfig, etc.).
+    ///     Note: This is overridden at load time with the actual directory location
+    ///     for portability - the stored value in instance.json may be outdated.
     /// </summary>
-    public required string Path { get; init; }
+    public required string Path { get; set; }
 
     /// <summary>
     ///     Optional override for the Vintage Story installation directory.

@@ -991,4 +991,191 @@
         </Style.Triggers>
     </Style>
 
+    <!--  ============================================================  -->
+    <!--  Collapsible Category Styles  -->
+    <!--  ============================================================  -->
+
+    <!--  Category expander header style  -->
+    <Style x:Key="IMM.CategoryExpanderHeaderStyle" TargetType="{x:Type ToggleButton}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ToggleButton}">
+                    <Border
+                        x:Name="HeaderBorder"
+                        Margin="0,8,0,0"
+                        Padding="12,10"
+                        Background="{DynamicResource Brush.Panel.Secondary.Background.Solid}"
+                        BorderBrush="{DynamicResource Brush.Button.Bevel.Light}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Cursor="Hand">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Path
+                                x:Name="ExpandArrow"
+                                Grid.Column="0"
+                                Width="12"
+                                Height="12"
+                                Margin="0,0,10,0"
+                                VerticalAlignment="Center"
+                                Data="M 0 0 L 6 6 L 12 0"
+                                Fill="{DynamicResource Brush.Text.Primary}"
+                                RenderTransformOrigin="0.5,0.5"
+                                Stretch="Uniform"
+                                Stroke="{DynamicResource Brush.Text.Primary}"
+                                StrokeThickness="1.5">
+                                <Path.RenderTransform>
+                                    <RotateTransform Angle="0" />
+                                </Path.RenderTransform>
+                            </Path>
+                            <ContentPresenter
+                                Grid.Column="1"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center" />
+                            <TextBlock
+                                Grid.Column="2"
+                                Margin="8,0,4,0"
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                Foreground="{DynamicResource Brush.Text.Subtle}"
+                                Text="{Binding ModCount, StringFormat='({0} mods)'}" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="False">
+                            <Setter TargetName="ExpandArrow" Property="RenderTransform">
+                                <Setter.Value>
+                                    <RotateTransform Angle="-90" />
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="HeaderBorder" Property="Background" Value="{DynamicResource Brush.Button.Primary.Background.Hover}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!--  Category expander style (legacy - keeping for reference)  -->
+    <Style x:Key="IMM.CategoryExpanderStyle" TargetType="{x:Type Expander}">
+        <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Expander}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <ToggleButton
+                            Grid.Row="0"
+                            IsChecked="{Binding IsExpanded, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                            Style="{StaticResource IMM.CategoryExpanderHeaderStyle}">
+                            <TextBlock
+                                FontSize="14"
+                                FontWeight="SemiBold"
+                                Foreground="{DynamicResource Brush.Text.Primary}"
+                                Text="{Binding CategoryName}" />
+                        </ToggleButton>
+                        <Border
+                            x:Name="ContentPanel"
+                            Grid.Row="1"
+                            Margin="0,4,0,0">
+                            <ContentPresenter x:Name="ExpanderContent" />
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsExpanded" Value="False">
+                            <Setter TargetName="ContentPanel" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!--  Category header row style for flat grouped DataGrid  -->
+    <Style x:Key="IMM.CategoryHeaderRowStyle" TargetType="{x:Type DataGridRow}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Margin" Value="2,8,2,0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="IsHitTestVisible" Value="True" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type DataGridRow}">
+                    <Border
+                        x:Name="HeaderBorder"
+                        Margin="8,0,8,4"
+                        Padding="12,10"
+                        Background="{DynamicResource Brush.Panel.Secondary.Background.Solid}"
+                        BorderBrush="{DynamicResource Brush.Button.Bevel.Light}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Cursor="Hand"
+                        SnapsToDevicePixels="True">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Path
+                                x:Name="ExpandArrow"
+                                Grid.Column="0"
+                                Width="12"
+                                Height="12"
+                                Margin="0,0,10,0"
+                                VerticalAlignment="Center"
+                                Data="M 0 0 L 6 6 L 12 0"
+                                Fill="{DynamicResource Brush.Text.Primary}"
+                                RenderTransformOrigin="0.5,0.5"
+                                Stretch="Uniform"
+                                Stroke="{DynamicResource Brush.Text.Primary}"
+                                StrokeThickness="1.5">
+                                <Path.RenderTransform>
+                                    <RotateTransform Angle="0" />
+                                </Path.RenderTransform>
+                            </Path>
+                            <TextBlock
+                                Grid.Column="1"
+                                FontSize="14"
+                                FontWeight="SemiBold"
+                                Foreground="{DynamicResource Brush.Text.Primary}"
+                                Text="{Binding DataContext.CategoryName, RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}}, FallbackValue='Unknown'}"
+                                VerticalAlignment="Center" />
+                            <TextBlock
+                                Grid.Column="2"
+                                Margin="8,0,4,0"
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                Foreground="{DynamicResource Brush.Text.Subtle}"
+                                Text="{Binding DataContext.ModCount, RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}}, StringFormat='({0} mods)'}" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <DataTrigger Binding="{Binding DataContext.IsExpanded, RelativeSource={RelativeSource AncestorType={x:Type DataGridRow}}}" Value="False">
+                            <Setter TargetName="ExpandArrow" Property="RenderTransform">
+                                <Setter.Value>
+                                    <RotateTransform Angle="-90" />
+                                </Setter.Value>
+                            </Setter>
+                        </DataTrigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="HeaderBorder" Property="Background" Value="{DynamicResource Brush.Button.Primary.Background.Hover}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>

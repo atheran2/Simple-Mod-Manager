@@ -40,6 +40,92 @@
             <!--  BindingProxy to enable DataContext binding in DataGrid columns  -->
             <helpers:BindingProxy x:Key="DataContextProxy" Data="{Binding}" />
 
+            <!--  Converters for grouped mods view  -->
+            <converters:IsCategoryHeaderConverter x:Key="IMM.IsCategoryHeaderConverter" />
+            <converters:GroupedModsSourceConverter x:Key="IMM.GroupedModsSourceConverter" />
+
+            <!--  Combined row style that handles both mods and category headers  -->
+            <Style x:Key="IMM.CombinedModsRowStyle" BasedOn="{StaticResource IMM.ModsDataGridRowBaseStyle}" TargetType="{x:Type DataGridRow}">
+                <EventSetter Event="UIElement.PreviewMouseLeftButtonDown" Handler="ModsDataGridRow_OnPreviewMouseLeftButtonDown" />
+                <EventSetter Event="FrameworkElement.Loaded" Handler="ModsDataGridRow_OnLoaded" />
+                <EventSetter Event="FrameworkElement.Unloaded" Handler="ModsDataGridRow_OnUnloaded" />
+                <EventSetter Event="UIElement.MouseEnter" Handler="ModsDataGridRow_OnMouseEnter" />
+                <EventSetter Event="UIElement.MouseLeave" Handler="ModsDataGridRow_OnMouseLeave" />
+                <EventSetter Event="UIElement.MouseRightButtonUp" Handler="ModsDataGridRow_OnMouseRightButtonUp" />
+                <Style.Triggers>
+                    <!--  When the row is a CategoryHeaderViewModel, use the header template  -->
+                    <DataTrigger Binding="{Binding Converter={StaticResource IMM.IsCategoryHeaderConverter}}" Value="True">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="{x:Type DataGridRow}">
+                                    <Border
+                                        x:Name="HeaderBorder"
+                                        Margin="8,8,8,4"
+                                        Padding="12,10"
+                                        Background="{DynamicResource Brush.Panel.Secondary.Background.Solid}"
+                                        BorderBrush="{DynamicResource Brush.Button.Bevel.Light}"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Cursor="Hand"
+                                        SnapsToDevicePixels="True">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Path
+                                                x:Name="ExpandArrow"
+                                                Grid.Column="0"
+                                                Width="12"
+                                                Height="12"
+                                                Margin="0,0,10,0"
+                                                VerticalAlignment="Center"
+                                                Data="M 0 0 L 6 6 L 12 0"
+                                                Fill="{DynamicResource Brush.Text.Primary}"
+                                                RenderTransformOrigin="0.5,0.5"
+                                                Stretch="Uniform"
+                                                Stroke="{DynamicResource Brush.Text.Primary}"
+                                                StrokeThickness="1.5">
+                                                <Path.RenderTransform>
+                                                    <RotateTransform Angle="0" />
+                                                </Path.RenderTransform>
+                                            </Path>
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                FontSize="14"
+                                                FontWeight="SemiBold"
+                                                Foreground="{DynamicResource Brush.Text.Primary}"
+                                                Text="{Binding CategoryName}" />
+                                            <TextBlock
+                                                Grid.Column="2"
+                                                Margin="8,0,4,0"
+                                                VerticalAlignment="Center"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource Brush.Text.Subtle}"
+                                                Text="{Binding ModCount, StringFormat='({0} mods)'}" />
+                                        </Grid>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsExpanded}" Value="False">
+                                            <Setter TargetName="ExpandArrow" Property="RenderTransform">
+                                                <Setter.Value>
+                                                    <RotateTransform Angle="-90" />
+                                                </Setter.Value>
+                                            </Setter>
+                                        </DataTrigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="HeaderBorder" Property="Background" Value="{DynamicResource Brush.Button.Primary.Background.Hover}" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
             <Style
                 x:Key="CloseButton"
                 BasedOn="{StaticResource IMM.ButtonBaseStyle}"
@@ -760,7 +846,8 @@
                                 BorderThickness="2,2,0,0"
                                 CornerRadius="4"
                                 SnapsToDevicePixels="True">
-
+                                <Grid>
+                                    <!--  Mods DataGrid (single grid for both grouped and ungrouped views)  -->
                                 <DataGrid
                                     x:Name="ModsDataGrid"
                                     ui:ControlHelper.CornerRadius="0"
@@ -781,13 +868,13 @@
                                     HorizontalGridLinesBrush="Transparent"
                                     IsReadOnly="False"
                                     IsSynchronizedWithCurrentItem="False"
-                                    ItemsSource="{Binding ModsView}"
                                     MinColumnWidth="20"
                                     PreviewKeyDown="ModsDataGrid_OnPreviewKeyDown"
                                     PreviewMouseLeftButtonDown="ModsDataGrid_OnPreviewMouseLeftButtonDown"
                                     PreviewMouseWheel="ModsDataGrid_OnPreviewMouseWheel"
                                     RowBackground="{DynamicResource Brush.Button.Primary.Background.Normal}"
                                     RowHeaderWidth="0"
+                                    RowStyle="{StaticResource IMM.CombinedModsRowStyle}"
                                     ScrollViewer.CanContentScroll="True"
                                     ScrollViewer.IsDeferredScrollingEnabled="{Binding IsLoadingMods, FallbackValue=False}"
                                     SelectionChanged="ModsDataGrid_OnSelectionChanged"
@@ -798,7 +885,14 @@
                                     VerticalGridLinesBrush="Transparent"
                                     VirtualizingPanel.IsVirtualizing="True"
                                     VirtualizingPanel.ScrollUnit="Item"
-                                    VirtualizingPanel.VirtualizationMode="Recycling">
+                                    VirtualizingPanel.VirtualizationMode="Standard">
+                                    <DataGrid.ItemsSource>
+                                        <MultiBinding Converter="{StaticResource IMM.GroupedModsSourceConverter}">
+                                            <Binding Path="IsGroupedByCategory" />
+                                            <Binding Path="ModsView" />
+                                            <Binding Path="GroupedModsView" />
+                                        </MultiBinding>
+                                    </DataGrid.ItemsSource>
                                     <DataGrid.Resources>
                                         <Style BasedOn="{StaticResource IMM.InstalledModsScrollViewerStyle}" TargetType="{x:Type ScrollViewer}" />
                                         <Style BasedOn="{StaticResource IMM.DataGridScrollBarStyle}" TargetType="{x:Type ScrollBar}" />
@@ -818,52 +912,9 @@
                                     <DataGrid.DragIndicatorStyle>
                                         <Style />
                                     </DataGrid.DragIndicatorStyle>
-                                    <DataGrid.GroupStyle>
-                                        <GroupStyle>
-                                            <GroupStyle.Panel>
-                                                <ItemsPanelTemplate>
-                                                    <DataGridRowsPresenter />
-                                                </ItemsPanelTemplate>
-                                            </GroupStyle.Panel>
-                                            <GroupStyle.HeaderTemplate>
-                                                <DataTemplate>
-                                                    <Border
-                                                        Margin="0,8,0,4"
-                                                        Padding="12,8"
-                                                        Background="{DynamicResource Brush.Panel.Secondary.Background.Solid}"
-                                                        BorderBrush="{DynamicResource Brush.Button.Bevel.Light}"
-                                                        BorderThickness="1"
-                                                        CornerRadius="8">
-                                                        <StackPanel Orientation="Horizontal">
-                                                            <TextBlock
-                                                                FontSize="14"
-                                                                FontWeight="SemiBold"
-                                                                Foreground="{DynamicResource Brush.Text.Primary}"
-                                                                Text="{Binding Name, Converter={StaticResource IMM.CategoryNameConverter}}" />
-                                                            <TextBlock
-                                                                Margin="8,0,0,0"
-                                                                FontSize="12"
-                                                                Foreground="{DynamicResource Brush.Text.Subtle}"
-                                                                Text="{Binding ItemCount, StringFormat='({0} mods)'}" />
-                                                        </StackPanel>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </GroupStyle.HeaderTemplate>
-                                        </GroupStyle>
-                                    </DataGrid.GroupStyle>
                                     <DataGrid.CellStyle>
                                         <StaticResource ResourceKey="IMM.DataGridCellBaseStyle" />
                                     </DataGrid.CellStyle>
-                                    <DataGrid.RowStyle>
-                                        <Style BasedOn="{StaticResource IMM.ModsDataGridRowBaseStyle}" TargetType="{x:Type DataGridRow}">
-                                            <EventSetter Event="UIElement.PreviewMouseLeftButtonDown" Handler="ModsDataGridRow_OnPreviewMouseLeftButtonDown" />
-                                            <EventSetter Event="FrameworkElement.Loaded" Handler="ModsDataGridRow_OnLoaded" />
-                                            <EventSetter Event="FrameworkElement.Unloaded" Handler="ModsDataGridRow_OnUnloaded" />
-                                            <EventSetter Event="UIElement.MouseEnter" Handler="ModsDataGridRow_OnMouseEnter" />
-                                            <EventSetter Event="UIElement.MouseLeave" Handler="ModsDataGridRow_OnMouseLeave" />
-                                            <EventSetter Event="UIElement.MouseRightButtonUp" Handler="ModsDataGridRow_OnMouseRightButtonUp" />
-                                        </Style>
-                                    </DataGrid.RowStyle>
                                     <DataGrid.Columns>
                                         <DataGridTemplateColumn
                                             x:Name="ActiveColumn"
@@ -1294,6 +1345,7 @@
                                             SortMemberPath="SideSortValue" />
                                     </DataGrid.Columns>
                                 </DataGrid>
+                                </Grid>
                             </Border>
                             <Image
                                 Grid.Row="1"

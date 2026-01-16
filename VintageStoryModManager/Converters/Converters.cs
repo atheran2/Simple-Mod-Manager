@@ -509,3 +509,66 @@ public class CategoryNameConverter : IValueConverter
         throw new NotSupportedException();
     }
 }
+
+/// <summary>
+/// Checks if the DataContext is a CategoryHeaderViewModel.
+/// Returns true if the bound item is a category header, false otherwise.
+/// </summary>
+public class IsCategoryHeaderConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        return value is ViewModels.CategoryHeaderViewModel;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// Multi-value converter that returns one of two collection views based on a boolean flag.
+/// values[0] = IsGroupedByCategory (bool)
+/// values[1] = ModsView (ICollectionView) - returned when NOT grouped
+/// values[2] = GroupedModsView (ICollectionView) - returned when grouped
+/// </summary>
+public class GroupedModsSourceConverter : IMultiValueConverter
+{
+    public object? Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (values.Length < 3 || values[0] == DependencyProperty.UnsetValue)
+            return null;
+
+        var isGrouped = values[0] is bool b && b;
+        return isGrouped ? values[2] : values[1];
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// Returns Visibility.Visible if the bound item is a CategoryHeaderViewModel, Collapsed otherwise.
+/// Use parameter "Invert" to invert the behavior.
+/// </summary>
+public class CategoryHeaderVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var isCategoryHeader = value is ViewModels.CategoryHeaderViewModel;
+        var invert = parameter?.ToString()?.Equals("Invert", StringComparison.OrdinalIgnoreCase) == true;
+
+        if (invert)
+            isCategoryHeader = !isCategoryHeader;
+
+        return isCategoryHeader ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}

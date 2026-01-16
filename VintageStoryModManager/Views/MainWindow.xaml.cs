@@ -5180,12 +5180,23 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (sender is not DataGridRow row) return;
+
+        // Handle category header clicks
+        if (row.DataContext is CategoryHeaderViewModel header)
+        {
+            _viewModel?.ToggleCategoryCollapse(header.CategoryId);
+            e.Handled = true;
+            return;
+        }
+
+        // Handle mod row clicks
         // Capture drag start point for category drag-drop
         _dragStartPoint = e.GetPosition(null);
 
         if (ShouldIgnoreRowSelection(e.OriginalSource as DependencyObject)) return;
 
-        if (sender is not DataGridRow row || row.DataContext is not ModListItemViewModel mod) return;
+        if (row.DataContext is not ModListItemViewModel mod) return;
 
         row.Focus();
         HandleModRowSelection(mod);

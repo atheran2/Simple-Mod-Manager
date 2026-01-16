@@ -66,6 +66,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly object _modsStateLock = new();
     private readonly ModDirectoryWatcher _modsWatcher;
 
+    // Grouped mods list for collapsible category view (mixed CategoryHeaderViewModel and ModListItemViewModel)
+    private readonly ObservableCollection<object> _groupedModsList = new();
+    private readonly HashSet<string> _collapsedCategories = new(StringComparer.OrdinalIgnoreCase);
+
     private readonly Dictionary<string, ModListItemViewModel> _modViewModelsBySourcePath =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -184,6 +188,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         CloudModlistsView = CollectionViewSource.GetDefaultView(_cloudModlists);
         LocalModlistsView = CollectionViewSource.GetDefaultView(_localModlists);
         InstalledTagFilters = new ReadOnlyObservableCollection<TagFilterOptionViewModel>(_installedTagFilters);
+        GroupedModsView = CollectionViewSource.GetDefaultView(_groupedModsList);
+        GroupedModsView.Filter = FilterGroupedItem;
         _mods.CollectionChanged += OnModsCollectionChanged;
         _searchResults.CollectionChanged += OnSearchResultsCollectionChanged;
         _sortOptions = new ObservableCollection<SortOption>(CreateSortOptions());
@@ -224,6 +230,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public ICollectionView ModsView { get; }
 
+    /// <summary>
+    ///     Collection view over a mixed collection of CategoryHeaderViewModel and ModListItemViewModel
+    ///     for the collapsible category view.
+    /// </summary>
+    public ICollectionView GroupedModsView { get; }
+
     public ICollectionView SearchResultsView { get; }
 
     public ICollectionView CloudModlistsView { get; }
@@ -252,7 +264,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         get => _selectedSortOption;
         set
         {
-            if (SetProperty(ref _selectedSortOption, value)) value?.Apply(ModsView);
+            if (SetProperty(ref _selectedSortOption, value))
+            {
+                value?.Apply(ModsView);
+                ApplySortingToGroupedCategories();
+            }
         }
     }
 
@@ -365,7 +381,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         UpdateModCategoryFromConfiguration(mod);
 
         if (IsGroupedByCategory)
+        {
             ModsView.Refresh();
+            RebuildGroupedModsList();
+        }
     }
 
     /// <summary>
@@ -382,7 +401,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             UpdateModCategoryFromConfiguration(mod);
 
         if (IsGroupedByCategory)
+        {
             ModsView.Refresh();
+            RebuildGroupedModsList();
+        }
     }
 
     /// <summary>
@@ -444,20 +466,171 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    ///     Applies category grouping to the collection view.
+    ///     Applies category grouping - rebuilds the grouped mods list.
     /// </summary>
     private void ApplyCategoryGrouping()
     {
-        using (ModsView.DeferRefresh())
-        {
-            ModsView.GroupDescriptions.Clear();
+        RebuildGroupedModsList();
+    }
 
-            if (IsGroupedByCategory)
+    /// <summary>
+    ///     Rebuilds the grouped mods list (flat collection with category headers and mods).
+    /// </summary>
+    public void RebuildGroupedModsList()
+    {
+        _groupedModsList.Clear();
+
+        if (!IsGroupedByCategory)
+            return;
+
+        // Get defined categories (excluding Uncategorized - we'll handle that separately at the end)
+        var definedCategories = _configuration.GetEffectiveModCategories()
+            .Where(c => !string.Equals(c.Id, ModCategory.UncategorizedId, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(c => c.Order)
+            .ThenBy(c => c.Name)
+            .ToList();
+
+        // Build a set of valid category IDs for quick lookup
+        var validCategoryIds = new HashSet<string>(
+            definedCategories.Select(c => c.Id),
+            StringComparer.OrdinalIgnoreCase);
+
+        // Track mods that have been added to prevent duplicates
+        var addedMods = new HashSet<ModListItemViewModel>();
+
+        // Add mods for each defined category
+        foreach (var category in definedCategories)
+        {
+            var modsInCategory = _mods
+                .Where(m => string.Equals(m.CategoryId, category.Id, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (modsInCategory.Count == 0)
+                continue;
+
+            // Preserve expanded state
+            var isExpanded = !_collapsedCategories.Contains(category.Id);
+
+            var header = new CategoryHeaderViewModel(category.Id, category.Name, category.Order)
             {
-                ModsView.GroupDescriptions.Add(
-                    new PropertyGroupDescription(nameof(ModListItemViewModel.CategoryGroupKey)));
+                IsExpanded = isExpanded,
+                ModCount = modsInCategory.Count
+            };
+            _groupedModsList.Add(header);
+
+            foreach (var mod in modsInCategory)
+            {
+                _groupedModsList.Add(mod);
+                addedMods.Add(mod);
             }
         }
+
+        // Handle uncategorized mods (always at the end)
+        // This includes mods with: null/empty CategoryId, explicit UncategorizedId, or unknown category IDs
+        var uncategorizedMods = _mods
+            .Where(m => !addedMods.Contains(m))
+            .ToList();
+
+        if (uncategorizedMods.Count > 0)
+        {
+            var isExpanded = !_collapsedCategories.Contains(ModCategory.UncategorizedId);
+
+            var uncategorizedHeader = new CategoryHeaderViewModel(
+                ModCategory.UncategorizedId,
+                ModCategory.UncategorizedName,
+                int.MaxValue)
+            {
+                IsExpanded = isExpanded,
+                ModCount = uncategorizedMods.Count
+            };
+            _groupedModsList.Add(uncategorizedHeader);
+
+            foreach (var mod in uncategorizedMods)
+                _groupedModsList.Add(mod);
+        }
+
+        // Refresh the view to apply filtering/sorting
+        GroupedModsView.Refresh();
+    }
+
+    /// <summary>
+    ///     Toggles the collapsed state of a category.
+    /// </summary>
+    public void ToggleCategoryCollapse(string categoryId)
+    {
+        if (_collapsedCategories.Contains(categoryId))
+            _collapsedCategories.Remove(categoryId);
+        else
+            _collapsedCategories.Add(categoryId);
+
+        // Update the CategoryHeaderViewModel's IsExpanded property
+        var header = _groupedModsList.OfType<CategoryHeaderViewModel>()
+            .FirstOrDefault(h => h.CategoryId == categoryId);
+        if (header != null)
+            header.IsExpanded = !_collapsedCategories.Contains(categoryId);
+
+        GroupedModsView.Refresh();
+    }
+
+    /// <summary>
+    ///     Filters items in the grouped mods list.
+    ///     Category headers are shown only if they have visible mods; mods are hidden if their category is collapsed.
+    /// </summary>
+    private bool FilterGroupedItem(object? item)
+    {
+        if (item is CategoryHeaderViewModel header)
+        {
+            // Only show category header if it has at least one visible mod
+            var hasVisibleMods = _groupedModsList
+                .OfType<ModListItemViewModel>()
+                .Where(m => string.Equals(m.CategoryId, header.CategoryId, StringComparison.OrdinalIgnoreCase))
+                .Any(FilterMod);
+
+            // Update the visible mod count on the header
+            if (hasVisibleMods)
+            {
+                var visibleCount = _groupedModsList
+                    .OfType<ModListItemViewModel>()
+                    .Where(m => string.Equals(m.CategoryId, header.CategoryId, StringComparison.OrdinalIgnoreCase))
+                    .Count(FilterMod);
+                header.ModCount = visibleCount;
+            }
+
+            return hasVisibleMods;
+        }
+
+        if (item is ModListItemViewModel mod)
+        {
+            // If category is collapsed, hide the mod
+            if (_collapsedCategories.Contains(mod.CategoryId))
+                return false;
+
+            // Apply the same filter logic as the main ModsView
+            return FilterMod(mod);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    ///     Applies the current sort option to the grouped mods view.
+    ///     Note: With the flat list approach, sorting is more complex -
+    ///     we need to ensure category headers stay with their mods.
+    /// </summary>
+    private void ApplySortingToGroupedCategories()
+    {
+        // With the flat list approach, we rebuild the list in sorted order
+        // rather than applying sort descriptions to the view
+        if (IsGroupedByCategory)
+            RebuildGroupedModsList();
+    }
+
+    /// <summary>
+    ///     Refreshes the filter on the grouped mods view.
+    /// </summary>
+    private void RefreshGroupedCategoriesFilter()
+    {
+        GroupedModsView.Refresh();
     }
 
     /// <summary>
@@ -472,7 +645,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             UpdateModCategoryFromConfiguration(mod, categories);
 
         if (IsGroupedByCategory)
+        {
             ModsView.Refresh();
+            RebuildGroupedModsList();
+        }
     }
 
     /// <summary>
@@ -2793,6 +2969,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         SyncSelectedTagsToService(_installedTagFilters, isInstalled: true);
         UpdateHasSelectedTags();
         ModsView.Refresh();
+        RefreshGroupedCategoriesFilter();
     }
 
     private void OnInstalledTagFilterPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -2806,6 +2983,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             UpdateHasSelectedTags();
             ModsView.Refresh();
+            RefreshGroupedCategoriesFilter();
         }
     }
 
@@ -4917,6 +5095,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (!cts.IsCancellationRequested)
         {
             ModsView.Refresh();
+            RefreshGroupedCategoriesFilter();
         }
     }
 

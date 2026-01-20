@@ -2801,6 +2801,7 @@ public partial class MainWindow : Window
         await ReloadViewModelAsync();
         RefreshInstanceMenuItems();
         UpdateInstanceMenuChecks();
+        UpdateActiveGameProfileDisplay();
 
         // Launch the game with this instance (simulate button click)
         LaunchGameButton_OnClick(this, new RoutedEventArgs());
@@ -2919,6 +2920,7 @@ public partial class MainWindow : Window
 
             RefreshInstanceMenuItems();
             UpdateInstanceMenuChecks();
+            UpdateActiveGameProfileDisplay();
 
             // Refresh the instance browser
             _instanceBrowserViewModel?.RefreshInstances();
@@ -2969,6 +2971,7 @@ public partial class MainWindow : Window
 
             RefreshInstanceMenuItems();
             UpdateInstanceMenuChecks();
+            UpdateActiveGameProfileDisplay();
 
             WpfMessageBox.Show(
                 $"Instance '{instance.Name}' has been deleted.",
@@ -3479,6 +3482,21 @@ public partial class MainWindow : Window
         {
             if (_viewModel.ShowMainTabCommand?.CanExecute(null) == true)
                 _viewModel.ShowMainTabCommand.Execute(null);
+
+            // Always refresh the mods list when switching to this tab
+            // to pick up any mods installed from the Mod Browser
+            if (!_viewModel.IsBusy && !_isAutomaticRefreshRunning)
+            {
+                try
+                {
+                    await RefreshModsAsync();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[MainWindow] Failed to refresh mods on tab switch: {ex.Message}");
+                }
+            }
         }
         else if (Equals(tabControl.SelectedItem, DatabaseTab))
         {
@@ -8156,12 +8174,13 @@ public partial class MainWindow : Window
 
         try
         {
-            RefreshModDetailsOnly();
+            // Always do a full refresh to discover new/removed mods
+            await RefreshModsAsync(true);
         }
         catch (Exception ex)
         {
             WpfMessageBox.Show(
-                $"Failed to refresh mod details:\n{ex.Message}",
+                $"Failed to refresh mods:\n{ex.Message}",
                 "Simple VS Manager",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
@@ -8447,18 +8466,34 @@ public partial class MainWindow : Window
     {
         if (ActiveGameProfileTextBlock is null) return;
 
+        var activeInstance = _instanceService.ActiveInstance;
         var profiles = _userConfiguration.GetGameProfileNames();
         var hasAdditionalProfiles = profiles.Any(name => !_userConfiguration.IsDefaultGameProfile(name));
-        if (!hasAdditionalProfiles)
+
+        // Show if there's an active instance OR additional profiles
+        if (activeInstance == null && !hasAdditionalProfiles)
         {
             ActiveGameProfileTextBlock.Visibility = Visibility.Collapsed;
             return;
         }
 
-        var activeName = _userConfiguration.ActiveGameProfileName;
-        if (string.IsNullOrWhiteSpace(activeName)) activeName = UserConfigurationService.DefaultProfileName;
+        var parts = new List<string>();
 
-        ActiveGameProfileTextBlock.Text = $"Profile: {activeName}";
+        // Add instance name if one is active
+        if (activeInstance != null)
+        {
+            parts.Add($"Instance: {activeInstance.Name}");
+        }
+
+        // Add profile name if there are additional profiles
+        if (hasAdditionalProfiles)
+        {
+            var activeName = _userConfiguration.ActiveGameProfileName;
+            if (string.IsNullOrWhiteSpace(activeName)) activeName = UserConfigurationService.DefaultProfileName;
+            parts.Add($"Profile: {activeName}");
+        }
+
+        ActiveGameProfileTextBlock.Text = string.Join(" | ", parts);
         ActiveGameProfileTextBlock.Visibility = Visibility.Visible;
     }
 
@@ -8569,6 +8604,7 @@ public partial class MainWindow : Window
 
             RefreshInstanceMenuItems();
             UpdateInstanceMenuChecks();
+            UpdateActiveGameProfileDisplay();
 
             WpfMessageBox.Show(
                 $"Instance '{instance.Name}' created and activated.\n\nPath: {instance.Path}\n\nThe mod list now shows this instance's mods (empty for a new instance).",
@@ -8620,6 +8656,7 @@ public partial class MainWindow : Window
 
             RefreshInstanceMenuItems();
             UpdateInstanceMenuChecks();
+            UpdateActiveGameProfileDisplay();
 
             WpfMessageBox.Show(
                 $"Instance '{instanceName}' has been deleted.",
@@ -8705,6 +8742,7 @@ public partial class MainWindow : Window
         }
 
         UpdateInstanceMenuChecks();
+        UpdateActiveGameProfileDisplay();
     }
 
     private void RefreshInstanceMenuItems()
@@ -8802,6 +8840,8 @@ public partial class MainWindow : Window
             // Sync installed mods to ModBrowser so it knows what's installed in this instance
             SyncInstalledModsToModBrowser();
         }
+
+        UpdateActiveGameProfileDisplay();
     }
 
     #endregion

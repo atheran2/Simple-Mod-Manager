@@ -1911,9 +1911,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             _modsWatcher.EnsureWatchers();
             var changeSet = _modsWatcher.ConsumeChanges();
-            var requiresFullReload = _mods.Count == 0
-                                     || changeSet.RequiresFullRescan
-                                     || changeSet.Paths.Count == 0;
+            // Always do a full reload to ensure we discover new mods
+            // The incremental path only updates known files, not new ones
+            var requiresFullReload = true;
 
             var previousSelection = SelectedMod?.SourcePath;
 

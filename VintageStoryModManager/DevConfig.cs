@@ -59,6 +59,12 @@ public static class DevConfig
     public static string FirebaseLegacyModlistDbUrl { get; } =
         "https://simple-vs-manager-default-rtdb.europe-west1.firebasedatabase.app";
 
+    // Firebase instance sharing storage (separate project).
+    public static string FirebaseInstanceDefaultDbUrl { get; } =
+        "https://vsmanager-instances-default-rtdb.europe-west1.firebasedatabase.app";
+
+    public static string FirebaseInstanceApiKey { get; } = "AIzaSyDPJ-wGJf0nUnsp7hXJu0FY-70seBthKGI";
+
     // Cloud/Firebase cache location (Simple VS Manager/Temp Cache/Firebase Cache)
     public static string FirebaseBackupDirectory => Path.Combine(GetManagerDirectory(), FirebaseCacheDirectoryName);
 

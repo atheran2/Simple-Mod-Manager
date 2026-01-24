@@ -28,6 +28,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <TextBlock Text="Instances"
@@ -36,8 +37,19 @@
                        Foreground="{DynamicResource Brush.Text.Primary}"
                        VerticalAlignment="Center" />
 
-            <!-- Create New Instance Button -->
+            <!-- Import Instance Button -->
             <Button Grid.Column="1"
+                    Content="Import..."
+                    Click="ImportInstanceButton_Click"
+                    Padding="16,8"
+                    Margin="0,0,8,0"
+                    FontSize="14"
+                    Style="{StaticResource IMM.ButtonBaseStyle}"
+                    Cursor="Hand"
+                    ToolTip="Import an instance from a .vsinstance file" />
+
+            <!-- Create New Instance Button -->
+            <Button Grid.Column="2"
                     Content="+ New Instance"
                     Command="{Binding CreateInstanceCommand}"
                     Padding="16,8"
@@ -95,6 +107,9 @@
                                                   Click="LaunchMenuItem_Click" />
                                         <MenuItem Header="Edit Instance"
                                                   Click="EditMenuItem_Click" />
+                                        <Separator />
+                                        <MenuItem Header="Share Instance..."
+                                                  Click="ShareInstanceMenuItem_Click" />
                                         <Separator />
                                         <MenuItem Header="Open Folder"
                                                   Click="OpenFolderMenuItem_Click" />

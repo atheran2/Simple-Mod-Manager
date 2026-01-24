@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace VintageStoryModManager.Models;
@@ -60,6 +61,18 @@ public sealed class GameInstance
     ///     Total playtime in seconds (optional tracking).
     /// </summary>
     public long TotalPlaytimeSeconds { get; set; }
+
+    /// <summary>
+    ///     Categories defined for this instance.
+    ///     When null, falls back to global/profile categories for backward compatibility.
+    /// </summary>
+    public List<ModCategory>? Categories { get; set; }
+
+    /// <summary>
+    ///     Maps mod IDs to category IDs for this instance.
+    ///     Key: mod ID (string), Value: category ID (string)
+    /// </summary>
+    public Dictionary<string, string>? ModCategoryAssignments { get; set; }
 
     /// <summary>
     ///     Gets the path to the Mods folder for this instance.

@@ -145,6 +145,8 @@ public sealed class UserConfigurationService
 
     private readonly Dictionary<string, string> _themePaletteColors = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<ModCategory> _globalModCategories = new();
+    private GameInstance? _activeInstance;
+    private Action? _saveInstanceCallback;
     private bool _isGroupedByCategory;
     private bool _hasPendingModConfigPathSave;
     private bool _hasPendingSave;
@@ -176,6 +178,64 @@ public sealed class UserConfigurationService
         _hasPendingSave |= !File.Exists(_configurationPath);
         _hasPendingModConfigPathSave = false;
     }
+
+    #region Instance Mode
+
+    /// <summary>
+    ///     Gets whether categories are currently being managed per-instance.
+    /// </summary>
+    public bool IsInstanceMode => _activeInstance != null;
+
+    /// <summary>
+    ///     Gets the currently active instance, if any.
+    /// </summary>
+    public GameInstance? ActiveInstance => _activeInstance;
+
+    /// <summary>
+    ///     Sets the active instance for category management.
+    ///     When an instance is active, categories are stored per-instance instead of per-profile.
+    /// </summary>
+    /// <param name="instance">The active instance, or null to use profile mode.</param>
+    /// <param name="saveCallback">Callback to save instance metadata when categories change.</param>
+    public void SetActiveInstance(GameInstance? instance, Action? saveCallback = null)
+    {
+        _activeInstance = instance;
+        _saveInstanceCallback = saveCallback;
+    }
+
+    /// <summary>
+    ///     Initializes instance categories if they don't exist.
+    ///     Called when switching to an instance that has never had categories set up.
+    /// </summary>
+    private void EnsureInstanceCategoriesInitialized()
+    {
+        if (_activeInstance == null) return;
+
+        // Initialize categories list if null
+        if (_activeInstance.Categories == null)
+        {
+            _activeInstance.Categories = new List<ModCategory>
+            {
+                ModCategory.CreateDefault()
+            };
+        }
+
+        // Initialize assignments dictionary if null
+        _activeInstance.ModCategoryAssignments ??= new Dictionary<string, string>();
+    }
+
+    /// <summary>
+    ///     Saves the active instance metadata if in instance mode.
+    /// </summary>
+    private void SaveInstanceIfNeeded()
+    {
+        if (_activeInstance != null && _saveInstanceCallback != null)
+        {
+            _saveInstanceCallback.Invoke();
+        }
+    }
+
+    #endregion
 
     public string? DataDirectory => ActiveProfile.DataDirectory;
 
@@ -371,10 +431,28 @@ public sealed class UserConfigurationService
     }
 
     /// <summary>
-    ///     Gets all effective categories for the current profile (global + profile overrides).
+    ///     Gets all effective categories for the current context (instance or profile).
     /// </summary>
     public IReadOnlyList<ModCategory> GetEffectiveModCategories()
     {
+        // Instance mode: use instance-specific categories
+        if (_activeInstance != null)
+        {
+            EnsureInstanceCategoriesInitialized();
+
+            var instanceCategories = _activeInstance.Categories!;
+            if (instanceCategories.Count == 0 ||
+                !instanceCategories.Any(c => c.Id == ModCategory.UncategorizedId))
+            {
+                // Ensure Uncategorized exists
+                if (!instanceCategories.Any(c => c.Id == ModCategory.UncategorizedId))
+                    instanceCategories.Add(ModCategory.CreateDefault());
+            }
+
+            return instanceCategories.OrderBy(c => c.Order).ToArray();
+        }
+
+        // Profile mode: use global + profile override categories
         var result = new Dictionary<string, ModCategory>(StringComparer.OrdinalIgnoreCase);
 
         // Add global categories
@@ -397,25 +475,51 @@ public sealed class UserConfigurationService
     }
 
     /// <summary>
-    ///     Adds a new global category.
+    ///     Adds a new category. In instance mode, adds to instance categories.
+    ///     In profile mode, adds to global categories.
     /// </summary>
     public ModCategory AddGlobalCategory(string name)
     {
-        var maxOrder = _globalModCategories.Count > 0
+        // Instance mode: add to instance categories
+        if (_activeInstance != null)
+        {
+            EnsureInstanceCategoriesInitialized();
+            var instanceCategories = _activeInstance.Categories!;
+
+            var maxOrder = instanceCategories.Count > 0
+                ? instanceCategories.Max(c => c.Order)
+                : 0;
+
+            var category = new ModCategory(name, maxOrder + 1);
+            instanceCategories.Add(category);
+            SaveInstanceIfNeeded();
+            return category;
+        }
+
+        // Profile mode: add to global categories
+        var globalMaxOrder = _globalModCategories.Count > 0
             ? _globalModCategories.Max(c => c.Order)
             : 0;
 
-        var category = new ModCategory(name, maxOrder + 1);
-        _globalModCategories.Add(category);
+        var globalCategory = new ModCategory(name, globalMaxOrder + 1);
+        _globalModCategories.Add(globalCategory);
         Save();
-        return category;
+        return globalCategory;
     }
 
     /// <summary>
     ///     Adds a profile-specific category.
+    ///     In instance mode, adds to instance categories instead.
     /// </summary>
     public ModCategory AddProfileCategory(string name)
     {
+        // Instance mode: redirect to instance categories
+        if (_activeInstance != null)
+        {
+            return AddGlobalCategory(name);
+        }
+
+        // Profile mode: add to profile overrides
         var allCategories = GetEffectiveModCategories();
         var maxOrder = allCategories.Count > 0
             ? allCategories.Max(c => c.Order)
@@ -428,7 +532,7 @@ public sealed class UserConfigurationService
     }
 
     /// <summary>
-    ///     Renames a category (global or profile-specific).
+    ///     Renames a category.
     /// </summary>
     public bool RenameCategory(string categoryId, string newName)
     {
@@ -436,7 +540,24 @@ public sealed class UserConfigurationService
         if (string.Equals(categoryId, ModCategory.UncategorizedId, StringComparison.OrdinalIgnoreCase))
             return false; // Cannot rename default category
 
-        // Try profile overrides first
+        // Instance mode: rename in instance categories
+        if (_activeInstance != null)
+        {
+            EnsureInstanceCategoriesInitialized();
+            var instanceCategory = _activeInstance.Categories!
+                .FirstOrDefault(c => string.Equals(c.Id, categoryId, StringComparison.OrdinalIgnoreCase));
+
+            if (instanceCategory != null)
+            {
+                instanceCategory.Name = newName;
+                SaveInstanceIfNeeded();
+                return true;
+            }
+
+            return false;
+        }
+
+        // Profile mode: try profile overrides first
         var profileCategory = ActiveProfile.ProfileCategoryOverrides
             .FirstOrDefault(c => string.Equals(c.Id, categoryId, StringComparison.OrdinalIgnoreCase));
 
@@ -469,6 +590,33 @@ public sealed class UserConfigurationService
         if (string.Equals(categoryId, ModCategory.UncategorizedId, StringComparison.OrdinalIgnoreCase))
             return false; // Cannot delete default category
 
+        // Instance mode: delete from instance categories
+        if (_activeInstance != null)
+        {
+            EnsureInstanceCategoriesInitialized();
+
+            var removedCount = _activeInstance.Categories!
+                .RemoveAll(c => string.Equals(c.Id, categoryId, StringComparison.OrdinalIgnoreCase));
+
+            if (removedCount > 0)
+            {
+                // Move all mods in this category to Uncategorized
+                var modsToReassign = _activeInstance.ModCategoryAssignments!
+                    .Where(kvp => string.Equals(kvp.Value, categoryId, StringComparison.OrdinalIgnoreCase))
+                    .Select(kvp => kvp.Key)
+                    .ToArray();
+
+                foreach (var modId in modsToReassign)
+                    _activeInstance.ModCategoryAssignments![modId] = ModCategory.UncategorizedId;
+
+                SaveInstanceIfNeeded();
+                return true;
+            }
+
+            return false;
+        }
+
+        // Profile mode
         var removed = false;
 
         // Remove from profile overrides
@@ -501,6 +649,25 @@ public sealed class UserConfigurationService
     /// </summary>
     public void ReorderCategories(IReadOnlyList<string> orderedCategoryIds)
     {
+        // Instance mode: reorder instance categories
+        if (_activeInstance != null)
+        {
+            EnsureInstanceCategoriesInitialized();
+            var instanceCategories = _activeInstance.Categories!;
+
+            for (var i = 0; i < orderedCategoryIds.Count; i++)
+            {
+                var categoryId = orderedCategoryIds[i];
+                var category = instanceCategories
+                    .FirstOrDefault(c => string.Equals(c.Id, categoryId, StringComparison.OrdinalIgnoreCase));
+                if (category != null) category.Order = i;
+            }
+
+            SaveInstanceIfNeeded();
+            return;
+        }
+
+        // Profile mode
         var allCategories = GetEffectiveModCategories().ToDictionary(c => c.Id, StringComparer.OrdinalIgnoreCase);
 
         for (var i = 0; i < orderedCategoryIds.Count; i++)
@@ -533,6 +700,16 @@ public sealed class UserConfigurationService
     {
         if (string.IsNullOrWhiteSpace(modId)) return ModCategory.UncategorizedId;
 
+        // Instance mode: check instance assignments
+        if (_activeInstance != null)
+        {
+            EnsureInstanceCategoriesInitialized();
+            return _activeInstance.ModCategoryAssignments!.TryGetValue(modId, out var instanceCategoryId)
+                ? instanceCategoryId
+                : ModCategory.UncategorizedId;
+        }
+
+        // Profile mode
         return ActiveProfile.ModCategoryAssignments.TryGetValue(modId, out var categoryId)
             ? categoryId
             : ModCategory.UncategorizedId;
@@ -549,7 +726,30 @@ public sealed class UserConfigurationService
             ? ModCategory.UncategorizedId
             : categoryId;
 
-        if (string.Equals(normalizedCategoryId, ModCategory.UncategorizedId, StringComparison.OrdinalIgnoreCase))
+        var isUncategorized = string.Equals(normalizedCategoryId, ModCategory.UncategorizedId,
+            StringComparison.OrdinalIgnoreCase);
+
+        // Instance mode: update instance assignments
+        if (_activeInstance != null)
+        {
+            EnsureInstanceCategoriesInitialized();
+
+            if (isUncategorized)
+            {
+                if (_activeInstance.ModCategoryAssignments!.Remove(modId))
+                    SaveInstanceIfNeeded();
+            }
+            else
+            {
+                _activeInstance.ModCategoryAssignments![modId] = normalizedCategoryId;
+                SaveInstanceIfNeeded();
+            }
+
+            return;
+        }
+
+        // Profile mode
+        if (isUncategorized)
         {
             // Remove assignment for uncategorized (it's the default)
             if (ActiveProfile.ModCategoryAssignments.Remove(modId))
@@ -574,30 +774,65 @@ public sealed class UserConfigurationService
         var isUncategorized = string.Equals(normalizedCategoryId, ModCategory.UncategorizedId,
             StringComparison.OrdinalIgnoreCase);
 
-        var changed = false;
+        // Instance mode: update instance assignments
+        if (_activeInstance != null)
+        {
+            EnsureInstanceCategoriesInitialized();
+            var assignments = _activeInstance.ModCategoryAssignments!;
+
+            var changed = false;
+            foreach (var modId in modIds)
+            {
+                if (string.IsNullOrWhiteSpace(modId)) continue;
+
+                if (isUncategorized)
+                {
+                    changed |= assignments.Remove(modId);
+                }
+                else
+                {
+                    assignments[modId] = normalizedCategoryId;
+                    changed = true;
+                }
+            }
+
+            if (changed) SaveInstanceIfNeeded();
+            return;
+        }
+
+        // Profile mode
+        var profileChanged = false;
         foreach (var modId in modIds)
         {
             if (string.IsNullOrWhiteSpace(modId)) continue;
 
             if (isUncategorized)
             {
-                changed |= ActiveProfile.ModCategoryAssignments.Remove(modId);
+                profileChanged |= ActiveProfile.ModCategoryAssignments.Remove(modId);
             }
             else
             {
                 ActiveProfile.ModCategoryAssignments[modId] = normalizedCategoryId;
-                changed = true;
+                profileChanged = true;
             }
         }
 
-        if (changed) Save();
+        if (profileChanged) Save();
     }
 
     /// <summary>
-    ///     Gets all mod category assignments for the current profile.
+    ///     Gets all mod category assignments for the current context (instance or profile).
     /// </summary>
     public IReadOnlyDictionary<string, string> GetAllModCategoryAssignments()
     {
+        // Instance mode: return instance assignments
+        if (_activeInstance != null)
+        {
+            EnsureInstanceCategoriesInitialized();
+            return new Dictionary<string, string>(_activeInstance.ModCategoryAssignments!, StringComparer.OrdinalIgnoreCase);
+        }
+
+        // Profile mode
         return new Dictionary<string, string>(ActiveProfile.ModCategoryAssignments, StringComparer.OrdinalIgnoreCase);
     }
 

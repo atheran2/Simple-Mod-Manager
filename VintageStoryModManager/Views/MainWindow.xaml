@@ -264,6 +264,17 @@
                                 Click="ManageBaseModsMenuItem_OnClick"
                                 Header="Manage base mods..." />
                             <Separator />
+                            <MenuItem
+                                x:Name="ShareInstanceMenuItem"
+                                Height="35"
+                                Click="ShareInstanceMenuItem_OnClick"
+                                Header="Share instance..." />
+                            <MenuItem
+                                x:Name="ImportInstanceMenuItem"
+                                Height="35"
+                                Click="ImportInstanceMenuItem_OnClick"
+                                Header="Import instance..." />
+                            <Separator />
                         </MenuItem>
                         <MenuItem
                             Height="35"
@@ -1968,6 +1979,327 @@
                                                                 </ScrollViewer.Resources>
                                                                 <TextBlock
                                                                     x:Name="SelectedModlistDescription"
+                                                                    Foreground="{DynamicResource Brush.Text.Primary}"
+                                                                    Text=""
+                                                                    TextWrapping="Wrap" />
+                                                            </ScrollViewer>
+                                                        </Grid>
+                                                    </Border>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </Grid>
+                                </TabItem>
+
+                                <!--  Shared Instances Sub-Tab  -->
+                                <TabItem
+                                    x:Name="SharedInstancesTabItem"
+                                    Padding="14,4,14,4"
+                                    VerticalAlignment="Center"
+                                    HorizontalContentAlignment="Stretch"
+                                    BorderBrush="#00000000"
+                                    Header="Shared Instances"
+                                    Style="{DynamicResource IMM.InnerModlistsTabItemStyle}"
+                                    UseLayoutRounding="True">
+                                    <Grid x:Name="SharedInstancesGrid">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="*" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+
+                                        <DataGrid
+                                            x:Name="CloudInstancesDataGrid"
+                                            Margin="8,0,8,0"
+                                            ui:ControlHelper.CornerRadius="0"
+                                            AutoGenerateColumns="False"
+                                            Background="{DynamicResource Brush.Panel.Secondary.Background.Solid}"
+                                            BorderBrush="{DynamicResource Brush.MiddleTab.ModTab.Selected}"
+                                            BorderThickness="5,5,5,5"
+                                            CanUserAddRows="False"
+                                            CanUserDeleteRows="False"
+                                            FontSize="15"
+                                            Foreground="{DynamicResource Brush.Text.Primary}"
+                                            GridLinesVisibility="None"
+                                            HeadersVisibility="Column"
+                                            HorizontalGridLinesBrush="Transparent"
+                                            IsEnabled="{Binding CanAccessCloudModlists}"
+                                            IsReadOnly="True"
+                                            ItemsSource="{Binding CloudInstancesView}"
+                                            RowBackground="{DynamicResource Brush.Panel.Primary.Background.Solid}"
+                                            RowHeaderWidth="0"
+                                            SelectionChanged="CloudInstancesDataGrid_OnSelectionChanged"
+                                            SelectionMode="Single"
+                                            SelectionUnit="FullRow"
+                                            VerticalGridLinesBrush="Transparent">
+                                            <DataGrid.Resources>
+                                                <Style BasedOn="{StaticResource IMM.InstalledModsScrollViewerStyle}" TargetType="{x:Type ScrollViewer}" />
+                                                <Style BasedOn="{StaticResource IMM.DataGridScrollBarStyle}" TargetType="{x:Type ScrollBar}" />
+                                                <Style BasedOn="{StaticResource IMM.DataGridScrollBarThumbStyle}" TargetType="{x:Type Thumb}" />
+                                                <Style TargetType="{x:Type TextBlock}">
+                                                    <Setter Property="TextWrapping" Value="Wrap" />
+                                                </Style>
+                                                <Style BasedOn="{StaticResource IMM.PrimaryDataGridColumnHeaderStyle}" TargetType="{x:Type DataGridColumnHeader}" />
+                                            </DataGrid.Resources>
+                                            <DataGrid.CellStyle>
+                                                <StaticResource ResourceKey="IMM.DataGridCellBaseStyle" />
+                                            </DataGrid.CellStyle>
+
+                                            <DataGrid.RowHeaderStyle>
+                                                <Style />
+                                            </DataGrid.RowHeaderStyle>
+                                            <DataGrid.RowStyle>
+                                                <StaticResource ResourceKey="IMM.ModlistsDataGridRowStyle" />
+                                            </DataGrid.RowStyle>
+                                            <DataGrid.Columns>
+                                                <!--  Image Column  -->
+                                                <DataGridTemplateColumn
+                                                    Width="48"
+                                                    Header=""
+                                                    IsReadOnly="True">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <Border
+                                                                Width="40"
+                                                                Height="40"
+                                                                Background="{DynamicResource Brush.Panel.Secondary.Background.Solid}"
+                                                                CornerRadius="4">
+                                                                <Image
+                                                                    Width="36"
+                                                                    Height="36"
+                                                                    HorizontalAlignment="Center"
+                                                                    VerticalAlignment="Center"
+                                                                    Source="{Binding Image}"
+                                                                    Stretch="UniformToFill">
+                                                                    <Image.Style>
+                                                                        <Style TargetType="Image">
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding HasImage}" Value="False">
+                                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </Image.Style>
+                                                                </Image>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                                <!--  Name Column  -->
+                                                <DataGridTextColumn
+                                                    Width="220"
+                                                    MinWidth="180"
+                                                    Binding="{Binding DisplayName}"
+                                                    Header="Name"
+                                                    IsReadOnly="True">
+                                                    <DataGridTextColumn.ElementStyle>
+                                                        <Style TargetType="{x:Type TextBlock}">
+                                                            <Setter Property="VerticalAlignment" Value="Center" />
+                                                            <Setter Property="ToolTipService.ShowDuration" Value="60000" />
+                                                            <Setter Property="ToolTip" Value="{Binding DisplayName}" />
+                                                        </Style>
+                                                    </DataGridTextColumn.ElementStyle>
+                                                    <DataGridTextColumn.CellStyle>
+                                                        <Style BasedOn="{StaticResource IMM.DataGridCellBaseStyle}" TargetType="{x:Type DataGridCell}">
+                                                            <Setter Property="VerticalContentAlignment" Value="Center" />
+                                                            <Setter Property="Margin" Value="10,0,0,0" />
+                                                            <Setter Property="FontWeight" Value="Bold" />
+                                                        </Style>
+                                                    </DataGridTextColumn.CellStyle>
+                                                </DataGridTextColumn>
+                                                <!--  Uploader Column  -->
+                                                <DataGridTextColumn
+                                                    Width="180"
+                                                    MinWidth="140"
+                                                    Binding="{Binding Uploader}"
+                                                    CellStyle="{StaticResource IMM.DataGridCenteredCellStyle}"
+                                                    ElementStyle="{StaticResource IMM.DataGridCenteredTextStyle}"
+                                                    Header="Uploader"
+                                                    IsReadOnly="True" />
+                                                <!--  VS Version Column  -->
+                                                <DataGridTextColumn
+                                                    Width="100"
+                                                    Binding="{Binding VsVersionDisplay}"
+                                                    CellStyle="{StaticResource IMM.DataGridCenteredCellStyle}"
+                                                    ElementStyle="{StaticResource IMM.DataGridCenteredTextStyle}"
+                                                    Header="VS Version"
+                                                    IsReadOnly="True" />
+                                                <!--  Mods Column  -->
+                                                <DataGridTextColumn
+                                                    Width="80"
+                                                    Binding="{Binding ModsSummary}"
+                                                    CellStyle="{StaticResource IMM.DataGridCenteredCellStyle}"
+                                                    ElementStyle="{StaticResource IMM.DataGridCenteredTextStyle}"
+                                                    Header="Mods"
+                                                    IsReadOnly="True" />
+                                                <!--  Date Added Column  -->
+                                                <DataGridTextColumn
+                                                    Width="150"
+                                                    Binding="{Binding DateAddedDisplay}"
+                                                    Header="Date Added"
+                                                    IsReadOnly="True"
+                                                    SortMemberPath="DateAdded">
+                                                    <DataGridTextColumn.ElementStyle>
+                                                        <Style TargetType="{x:Type TextBlock}">
+                                                            <Setter Property="HorizontalAlignment" Value="Center" />
+                                                            <Setter Property="VerticalAlignment" Value="Center" />
+                                                            <Setter Property="TextAlignment" Value="Center" />
+                                                        </Style>
+                                                    </DataGridTextColumn.ElementStyle>
+                                                    <DataGridTextColumn.CellStyle>
+                                                        <Style BasedOn="{StaticResource IMM.DataGridCellBaseStyle}" TargetType="{x:Type DataGridCell}">
+                                                            <Setter Property="HorizontalContentAlignment" Value="Center" />
+                                                            <Setter Property="VerticalContentAlignment" Value="Center" />
+                                                        </Style>
+                                                    </DataGridTextColumn.CellStyle>
+                                                </DataGridTextColumn>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+
+                                        <Border
+                                            x:Name="SharedInstancesButtonsBorder"
+                                            Grid.Row="1"
+                                            Margin="8,0,8,8"
+                                            Background="{DynamicResource Brush.MiddleTab.ModTab.Selected}">
+
+                                            <Grid
+                                                x:Name="SharedInstancesButtons"
+                                                Margin="0,0,0,8"
+                                                IsEnabled="{Binding CanAccessCloudModlists}">
+
+                                                <Button
+                                                    x:Name="RefreshCloudInstancesButton"
+                                                    Width="185"
+                                                    Height="32"
+                                                    MinWidth="100"
+                                                    Margin="10,10,0,0"
+                                                    Padding="12,0,12,0"
+                                                    HorizontalAlignment="Left"
+                                                    VerticalAlignment="Top"
+                                                    Click="RefreshCloudInstancesButton_OnClick"
+                                                    Content="Refresh" />
+                                                <Button
+                                                    x:Name="ImportCloudInstanceButton"
+                                                    Width="185"
+                                                    Height="32"
+                                                    MinWidth="185"
+                                                    Margin="10,47,0,0"
+                                                    Padding="12,0,12,0"
+                                                    HorizontalAlignment="Left"
+                                                    VerticalAlignment="Top"
+                                                    Click="ImportCloudInstanceButton_OnClick"
+                                                    Content="Import Selected Instance"
+                                                    IsEnabled="False" />
+                                                <Button
+                                                    x:Name="ManageCloudInstancesButton"
+                                                    Width="185"
+                                                    Height="32"
+                                                    MinWidth="165"
+                                                    Margin="10,84,0,0"
+                                                    Padding="12,0,12,0"
+                                                    HorizontalAlignment="Left"
+                                                    VerticalAlignment="Top"
+                                                    Click="ManageCloudInstancesButton_OnClick"
+                                                    Content="Manage My Instances" />
+
+                                                <!--  Import by ID section  -->
+                                                <StackPanel
+                                                    Margin="10,126,0,0"
+                                                    HorizontalAlignment="Left"
+                                                    VerticalAlignment="Top"
+                                                    Orientation="Horizontal">
+                                                    <TextBox
+                                                        x:Name="ImportInstanceIdTextBox"
+                                                        Width="140"
+                                                        Height="28"
+                                                        Padding="4,2"
+                                                        VerticalContentAlignment="Center"
+                                                        Background="{DynamicResource Brush.Dialog.TextBox.Background}"
+                                                        BorderBrush="{DynamicResource Brush.Dialog.TextBox.Border}"
+                                                        CaretBrush="{DynamicResource Brush.Dialog.TextBox.Caret}"
+                                                        Foreground="{DynamicResource Brush.Text.Primary}"
+                                                        ui:ControlHelper.PlaceholderText="Instance ID..."
+                                                        SelectionBrush="{DynamicResource Brush.Dialog.TextBox.SelectionBackground}"
+                                                        SelectionTextBrush="{DynamicResource Brush.Dialog.TextBox.SelectionForeground}" />
+                                                    <Button
+                                                        x:Name="ImportByIdButton"
+                                                        Width="40"
+                                                        Height="28"
+                                                        Margin="5,0,0,0"
+                                                        Click="ImportByIdButton_OnClick"
+                                                        Content="Go"
+                                                        ToolTip="Import instance by ID" />
+                                                </StackPanel>
+
+                                                <!--  Description Panel  -->
+                                                <Border
+                                                    x:Name="SharedInstancesDescriptionPanel"
+                                                    Height="142"
+                                                    Margin="200,10,10,0"
+                                                    VerticalAlignment="Top"
+                                                    Background="Transparent"
+                                                    BorderBrush="{DynamicResource Brush.SunkenSurface.Bevel.Light}"
+                                                    BorderThickness="0,0,2,2"
+                                                    CornerRadius="5"
+                                                    SnapsToDevicePixels="True">
+                                                    <Border
+                                                        Padding="10"
+                                                        Background="{DynamicResource Brush.ModCard.Background.Active}"
+                                                        BorderBrush="{DynamicResource Brush.SunkenSurface.Bevel.Dark}"
+                                                        BorderThickness="2,2,0,0"
+                                                        ClipToBounds="True"
+                                                        CornerRadius="5"
+                                                        SnapsToDevicePixels="True">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <Grid.RowDefinitions>
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="*" />
+                                                            </Grid.RowDefinitions>
+                                                            <!--  Image  -->
+                                                            <Border
+                                                                x:Name="SelectedInstanceImageBorder"
+                                                                Grid.RowSpan="2"
+                                                                Width="80"
+                                                                Height="80"
+                                                                Margin="0,0,12,0"
+                                                                Background="{DynamicResource Brush.Panel.Secondary.Background.Solid}"
+                                                                CornerRadius="4"
+                                                                Visibility="Collapsed">
+                                                                <Image
+                                                                    x:Name="SelectedInstanceImage"
+                                                                    Width="72"
+                                                                    Height="72"
+                                                                    HorizontalAlignment="Center"
+                                                                    VerticalAlignment="Center"
+                                                                    Stretch="UniformToFill" />
+                                                            </Border>
+                                                            <!--  Title  -->
+                                                            <TextBlock
+                                                                x:Name="SelectedInstanceTitle"
+                                                                Grid.Row="0"
+                                                                Grid.Column="1"
+                                                                FontWeight="Bold"
+                                                                Foreground="{DynamicResource Brush.Text.Primary}"
+                                                                Text=""
+                                                                TextWrapping="Wrap" />
+                                                            <!--  Description  -->
+                                                            <ScrollViewer
+                                                                Grid.Row="1"
+                                                                Grid.Column="1"
+                                                                Margin="0,8,0,0"
+                                                                Padding="0,0,4,0"
+                                                                CanContentScroll="False"
+                                                                HorizontalScrollBarVisibility="Disabled"
+                                                                PanningMode="VerticalOnly"
+                                                                VerticalScrollBarVisibility="Auto">
+                                                                <ScrollViewer.Resources>
+                                                                    <Style BasedOn="{StaticResource IMM.SlimScrollBarStyle}" TargetType="{x:Type ScrollBar}" />
+                                                                </ScrollViewer.Resources>
+                                                                <TextBlock
+                                                                    x:Name="SelectedInstanceDescription"
                                                                     Foreground="{DynamicResource Brush.Text.Primary}"
                                                                     Text=""
                                                                     TextWrapping="Wrap" />

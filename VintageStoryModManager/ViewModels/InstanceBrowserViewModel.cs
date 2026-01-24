@@ -78,6 +78,16 @@ public partial class InstanceBrowserViewModel : ObservableObject
     public event EventHandler<InstanceCardViewModel>? OpenFolderRequested;
 
     /// <summary>
+    /// Event raised when user requests to share an instance.
+    /// </summary>
+    public event EventHandler<InstanceCardViewModel>? ShareInstanceRequested;
+
+    /// <summary>
+    /// Event raised when user requests to import an instance.
+    /// </summary>
+    public event EventHandler? ImportInstanceRequested;
+
+    /// <summary>
     /// Refreshes the instances list from the service.
     /// </summary>
     public void RefreshInstances()
@@ -168,6 +178,25 @@ public partial class InstanceBrowserViewModel : ObservableObject
     {
         if (card == null) return;
         OpenFolderRequested?.Invoke(this, card);
+    }
+
+    /// <summary>
+    /// Command to share an instance.
+    /// </summary>
+    [RelayCommand]
+    private void ShareInstance(InstanceCardViewModel? card)
+    {
+        if (card == null) return;
+        ShareInstanceRequested?.Invoke(this, card);
+    }
+
+    /// <summary>
+    /// Command to import an instance.
+    /// </summary>
+    [RelayCommand]
+    private void ImportInstance()
+    {
+        ImportInstanceRequested?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>

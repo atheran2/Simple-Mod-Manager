@@ -76,6 +76,19 @@ public partial class InstanceBrowserView : System.Windows.Controls.UserControl
         }
     }
 
+    private void ShareInstanceMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetCardFromContextMenu(sender) is { } card)
+        {
+            ViewModel?.ShareInstanceCommand.Execute(card.ViewModel);
+        }
+    }
+
+    private void ImportInstanceButton_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel?.ImportInstanceCommand.Execute(null);
+    }
+
     private static InstanceCard? GetCardFromContextMenu(object sender)
     {
         if (sender is MenuItem menuItem &&

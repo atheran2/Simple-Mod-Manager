@@ -476,7 +476,12 @@ public sealed class InstanceService
             Notes = source.Notes,
             Created = DateTime.UtcNow,
             LastPlayed = null,
-            TotalPlaytimeSeconds = 0
+            TotalPlaytimeSeconds = 0,
+            // Copy categories and assignments
+            Categories = source.Categories?.Select(c => c.Clone()).ToList(),
+            ModCategoryAssignments = source.ModCategoryAssignments != null
+                ? new Dictionary<string, string>(source.ModCategoryAssignments)
+                : null
         };
 
         // Save instance metadata (overwrites the copied one with new ID)

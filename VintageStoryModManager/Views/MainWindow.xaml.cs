@@ -330,12 +330,16 @@ public partial class MainWindow : Window
     private readonly List<ModListItemViewModel> _selectedMods = new();
     private readonly List<LocalModlistListEntry> _selectedLocalModlists = new();
     private CloudModlistListEntry? _selectedCloudModlist;
+    private CloudInstanceListEntryViewModel? _selectedCloudInstance;
     private ModListItemViewModel? _selectionAnchor;
 
     // Cloud/Firebase state
     private bool _cloudModlistsLoaded;
+    private bool _cloudInstancesLoaded;
+    private bool _isCloudInstanceRefreshInProgress;
     private bool _firebaseMigrationAttempted;
     private FirebaseModlistStore? _cloudModlistStore;
+    private FirebaseInstanceStore? _cloudInstanceStore;
 
     // View state
     private ICollectionView? _currentModsView;
@@ -460,6 +464,9 @@ public partial class MainWindow : Window
         if (activeInstance != null && Directory.Exists(activeInstance.Path))
         {
             _dataDirectory = activeInstance.Path;
+
+            // Set active instance for category management
+            _userConfiguration.SetActiveInstance(activeInstance, () => _instanceService.SaveInstance(activeInstance));
         }
 
         RefreshDeveloperProfilesMenuEntries();
@@ -2788,6 +2795,8 @@ public partial class MainWindow : Window
             _instanceBrowserViewModel.DeleteInstanceRequested += InstanceBrowser_DeleteInstanceRequested;
             _instanceBrowserViewModel.DuplicateInstanceRequested += InstanceBrowser_DuplicateInstanceRequested;
             _instanceBrowserViewModel.OpenFolderRequested += InstanceBrowser_OpenFolderRequested;
+            _instanceBrowserViewModel.ShareInstanceRequested += InstanceBrowser_ShareInstanceRequested;
+            _instanceBrowserViewModel.ImportInstanceRequested += InstanceBrowser_ImportInstanceRequested;
 
             InstanceBrowserView.DataContext = _instanceBrowserViewModel;
         }
@@ -2797,6 +2806,10 @@ public partial class MainWindow : Window
     {
         // Switch to this instance first, then launch
         _instanceService.SetActiveInstance(instance.Id);
+
+        // Set active instance for category management
+        _userConfiguration.SetActiveInstance(instance, () => _instanceService.SaveInstance(instance));
+
         _dataDirectory = instance.Path;
         await ReloadViewModelAsync();
         RefreshInstanceMenuItems();
@@ -2889,6 +2902,57 @@ public partial class MainWindow : Window
         }
     }
 
+    private void InstanceBrowser_ShareInstanceRequested(object? sender, InstanceCardViewModel card)
+    {
+        ShowShareInstanceDialog(card.Instance);
+    }
+
+    private void InstanceBrowser_ImportInstanceRequested(object? sender, EventArgs e)
+    {
+        // Reuse the existing import handler
+        ImportInstanceMenuItem_OnClick(this, new RoutedEventArgs());
+    }
+
+    private void ShowShareInstanceDialog(GameInstance instance)
+    {
+        if (_viewModel is null || _instanceService is null) return;
+
+        // Get mods for this instance - only if viewing this instance
+        IReadOnlyList<ModListItemViewModel>? mods = null;
+        if (_instanceService.ActiveInstance?.Id == instance.Id)
+        {
+            mods = _viewModel.GetInstalledModsSnapshot();
+        }
+
+        var httpClient = new HttpClient();
+        var modApiService = new ModApiService(httpClient);
+        var sharingService = new InstanceSharingService(_instanceService, modApiService);
+
+        var cloudStore = GetOrCreateCloudInstanceStore();
+        var playerUid = _viewModel.PlayerUid;
+        var playerName = _viewModel.PlayerName;
+
+        var dialog = new ShareInstanceDialog(
+            this,
+            instance,
+            mods,
+            sharingService,
+            cloudStore,
+            playerUid,
+            playerName);
+
+        if (dialog.ShowDialog() == true)
+        {
+            if (dialog.ExportSucceeded)
+            {
+                if (!string.IsNullOrWhiteSpace(dialog.ExportedFilePath))
+                    _viewModel.ReportStatus($"Instance exported to {dialog.ExportedFilePath}");
+                else
+                    _viewModel.ReportStatus("Instance uploaded to cloud.");
+            }
+        }
+    }
+
     private async Task CreateNewInstanceAsync()
     {
         var dialog = new TextInputDialog("Create New Instance", "Instance name:", "My Instance");
@@ -2911,6 +2975,10 @@ public partial class MainWindow : Window
 
             // Switch to the new instance
             _instanceService.SetActiveInstance(instance.Id);
+
+            // Set active instance for category management
+            _userConfiguration.SetActiveInstance(instance, () => _instanceService.SaveInstance(instance));
+
             _dataDirectory = instance.Path;
             _cloudModlistStore = null;
             await ReloadViewModelAsync();
@@ -2964,6 +3032,10 @@ public partial class MainWindow : Window
             if (wasActive)
             {
                 _instanceService.SetActiveInstance(null);
+
+                // Clear active instance for category management (use profile mode)
+                _userConfiguration.SetActiveInstance(null);
+
                 _dataDirectory = _userConfiguration.DataDirectory;
                 await ReloadViewModelAsync();
                 SyncInstalledModsToModBrowser();
@@ -3578,6 +3650,13 @@ public partial class MainWindow : Window
         if (Equals(tabControl.SelectedItem, LocalModlistsTabItem))
         {
             _userConfiguration.SetPreferredModlistsTab(ModlistsTabSelection.Local);
+            return;
+        }
+
+        // Handle Shared Instances tab
+        if (Equals(tabControl.SelectedItem, SharedInstancesTabItem))
+        {
+            _ = RefreshCloudInstancesAsync(!_cloudInstancesLoaded);
             return;
         }
 
@@ -8595,6 +8674,10 @@ public partial class MainWindow : Window
 
             // Switch to the new instance
             _instanceService.SetActiveInstance(instance.Id);
+
+            // Set active instance for category management
+            _userConfiguration.SetActiveInstance(instance, () => _instanceService.SaveInstance(instance));
+
             _dataDirectory = instance.Path;
             _cloudModlistStore = null;
             await ReloadViewModelAsync();
@@ -8647,6 +8730,10 @@ public partial class MainWindow : Window
 
             // Switch back to profile mode since we deleted the active instance
             _instanceService.SetActiveInstance(null);
+
+            // Clear active instance for category management (use profile mode)
+            _userConfiguration.SetActiveInstance(null);
+
             _dataDirectory = _userConfiguration.DataDirectory;
             await ReloadViewModelAsync();
             SyncInstalledModsToModBrowser();
@@ -8718,6 +8805,103 @@ public partial class MainWindow : Window
         dialog.ShowDialog();
     }
 
+    private void ShareInstanceMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        var activeInstance = _instanceService.ActiveInstance;
+        if (activeInstance == null)
+        {
+            WpfMessageBox.Show(
+                "No instance is currently active.\n\nSelect an instance first, then use Share Instance to export it.",
+                "Share Instance",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var httpClient = new HttpClient(new HttpClientHandler
+        {
+            AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
+        });
+        var modApiService = new ModApiService(httpClient);
+        var sharingService = new InstanceSharingService(_instanceService, modApiService);
+        var mods = _viewModel?.GetInstalledModsSnapshot();
+
+        // Create cloud store for upload
+        var cloudStore = new FirebaseInstanceStore();
+        var playerUid = _viewModel?.PlayerUid;
+        var playerName = _viewModel?.PlayerName;
+
+        var dialog = new Dialogs.ShareInstanceDialog(this, activeInstance, mods, sharingService, cloudStore, playerUid, playerName);
+        if (dialog.ShowDialog() == true && dialog.ExportSucceeded && !string.IsNullOrWhiteSpace(dialog.ExportedFilePath))
+        {
+            WpfMessageBox.Show(
+                $"Instance exported successfully to:\n{dialog.ExportedFilePath}",
+                "Share Instance",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+    }
+
+    private async void ImportInstanceMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        var openDialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Import Instance",
+            Filter = InstanceSharingService.FileFilter,
+            DefaultExt = ".vsinstance"
+        };
+
+        if (openDialog.ShowDialog() != true)
+            return;
+
+        var httpClient = new HttpClient(new HttpClientHandler
+        {
+            AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
+        });
+        var modApiService = new ModApiService(httpClient);
+        var sharingService = new InstanceSharingService(_instanceService, modApiService);
+        var sourceInstance = await sharingService.LoadFromFileAsync(openDialog.FileName);
+
+        if (sourceInstance == null)
+        {
+            WpfMessageBox.Show(
+                "Failed to load instance file. The file may be corrupted or in an unsupported format.",
+                "Import Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            return;
+        }
+
+        var dialog = new Dialogs.ImportInstanceDialog(this, sourceInstance, sharingService);
+        if (dialog.ShowDialog() == true && dialog.ImportedInstance != null)
+        {
+            // Refresh the instance browser
+            _instanceBrowserViewModel?.RefreshInstances();
+            RefreshInstanceMenuItems();
+
+            var result = WpfMessageBox.Show(
+                $"Instance '{dialog.ImportedInstance.Name}' imported successfully!\n\nSwitch to this instance now?",
+                "Import Complete",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                // Switch to the imported instance
+                _instanceService.SetActiveInstance(dialog.ImportedInstance.Id);
+                _userConfiguration.SetActiveInstance(dialog.ImportedInstance, () => _instanceService.SaveInstance(dialog.ImportedInstance));
+
+                _dataDirectory = dialog.ImportedInstance.Path;
+                _cloudModlistStore = null;
+                await ReloadViewModelAsync();
+                SyncInstalledModsToModBrowser();
+
+                UpdateInstanceMenuChecks();
+                UpdateActiveGameProfileDisplay();
+            }
+        }
+    }
+
     private async void UseProfileMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
         if (_instanceService.ActiveInstance == null)
@@ -8729,6 +8913,9 @@ public partial class MainWindow : Window
 
         // Deactivate instance and go back to profile's data directory
         _instanceService.SetActiveInstance(null);
+
+        // Clear active instance for category management (use profile mode)
+        _userConfiguration.SetActiveInstance(null);
 
         var profileDataDirectory = _userConfiguration.DataDirectory;
         if (!string.IsNullOrWhiteSpace(profileDataDirectory))
@@ -8832,6 +9019,9 @@ public partial class MainWindow : Window
         var instance = _instanceService.ActiveInstance;
         if (instance != null)
         {
+            // Set active instance for category management
+            _userConfiguration.SetActiveInstance(instance, () => _instanceService.SaveInstance(instance));
+
             // Update the data directory to the instance path and reload the view model
             _dataDirectory = instance.Path;
             _cloudModlistStore = null;
@@ -13083,6 +13273,410 @@ public partial class MainWindow : Window
         if (InstallLocalModlistButton is not null)
             InstallLocalModlistButton.IsEnabled = hasSingleSelection;
     }
+
+    #region Cloud Instance Browser
+
+    private async void RefreshCloudInstancesButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        await RefreshCloudInstancesAsync(true);
+    }
+
+    private void CloudInstancesDataGrid_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (CloudInstancesDataGrid?.SelectedItem is CloudInstanceListEntryViewModel entry)
+            SetCloudInstanceSelection(entry);
+        else
+            SetCloudInstanceSelection(null);
+    }
+
+    private async void ImportCloudInstanceButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null || _selectedCloudInstance is null) return;
+
+        await ImportCloudInstanceAsync(_selectedCloudInstance);
+    }
+
+    private async void ManageCloudInstancesButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null) return;
+
+        try
+        {
+            var store = GetOrCreateCloudInstanceStore();
+            if (store is null)
+            {
+                WpfMessageBox.Show(
+                    "Could not connect to cloud services.",
+                    "Simple VS Manager",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_viewModel.PlayerUid))
+            {
+                WpfMessageBox.Show(
+                    "Cloud instance management requires a valid Vintage Story player identity.\n\nPlease ensure you have launched the game at least once.",
+                    "Simple VS Manager",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            store.SetPlayerIdentity(_viewModel.PlayerUid, _viewModel.PlayerName);
+
+            _viewModel.ReportStatus("Loading your cloud instances...");
+
+            var userSlots = await store.GetUserSlotsAsync();
+            if (userSlots.Count == 0)
+            {
+                WpfMessageBox.Show(
+                    "You do not have any cloud instances saved.\n\nUse 'Share instance...' from an instance's context menu to upload one.",
+                    "Simple VS Manager",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                _viewModel.ReportStatus("No cloud instances found.");
+                return;
+            }
+
+            var entries = userSlots
+                .Select(slot => new CloudInstanceManagementEntry(
+                    slot.SlotKey,
+                    slot.SlotLabel,
+                    slot.Name,
+                    slot.Description,
+                    slot.TargetVsVersion,
+                    slot.ModCount,
+                    slot.IsPublic,
+                    slot.ContentJson))
+                .ToList();
+
+            var dialog = new ManageCloudInstancesDialog(
+                this,
+                entries,
+                refreshCallback: async () =>
+                {
+                    var refreshedSlots = await store.GetUserSlotsAsync();
+                    return refreshedSlots
+                        .Select(slot => new CloudInstanceManagementEntry(
+                            slot.SlotKey,
+                            slot.SlotLabel,
+                            slot.Name,
+                            slot.Description,
+                            slot.TargetVsVersion,
+                            slot.ModCount,
+                            slot.IsPublic,
+                            slot.ContentJson))
+                        .ToList();
+                },
+                toggleVisibilityCallback: async (entry, newVisibility) =>
+                {
+                    try
+                    {
+                        await store.UpdateVisibilityAsync(entry.SlotKey, newVisibility);
+                        var visibilityText = newVisibility ? "public" : "unlisted";
+                        _viewModel.ReportStatus($"Changed \"{entry.EffectiveName}\" to {visibilityText}.");
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        WpfMessageBox.Show(
+                            $"Failed to update visibility:\n{ex.Message}",
+                            "Simple VS Manager",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Error);
+                        return false;
+                    }
+                },
+                deleteCallback: async entry =>
+                {
+                    try
+                    {
+                        await store.DeleteAsync(entry.SlotKey);
+                        _viewModel.ReportStatus($"Deleted cloud instance \"{entry.EffectiveName}\".");
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        WpfMessageBox.Show(
+                            $"Failed to delete instance:\n{ex.Message}",
+                            "Simple VS Manager",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Error);
+                        return false;
+                    }
+                });
+
+            dialog.ShowDialog();
+            _viewModel.ReportStatus("Ready.");
+
+            // Refresh the cloud instances list after management
+            await RefreshCloudInstancesAsync(false);
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show(
+                $"Failed to load cloud instances:\n{ex.Message}",
+                "Simple VS Manager",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private async void ImportByIdButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var instanceId = ImportInstanceIdTextBox?.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(instanceId))
+        {
+            WpfMessageBox.Show(
+                "Please enter an instance ID.",
+                "Simple VS Manager",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        await ImportCloudInstanceByIdAsync(instanceId);
+    }
+
+    private void SetCloudInstanceSelection(CloudInstanceListEntryViewModel? entry)
+    {
+        _selectedCloudInstance = entry;
+
+        if (SelectedInstanceTitle is not null)
+            SelectedInstanceTitle.Text = entry?.DisplayName ?? string.Empty;
+
+        if (SelectedInstanceDescription is not null)
+        {
+            var description = entry?.Description ?? string.Empty;
+            if (entry != null && !string.IsNullOrWhiteSpace(entry.VsVersionDisplay) && entry.VsVersionDisplay != "-")
+                description = $"VS {entry.VsVersionDisplay} • {entry.ModsSummary}\n\n{description}";
+            else if (entry != null)
+                description = $"{entry.ModsSummary}\n\n{description}";
+            SelectedInstanceDescription.Text = description;
+        }
+
+        if (SelectedInstanceImageBorder is not null && SelectedInstanceImage is not null)
+        {
+            if (entry?.HasImage == true)
+            {
+                SelectedInstanceImage.Source = entry.Image;
+                SelectedInstanceImageBorder.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                SelectedInstanceImage.Source = null;
+                SelectedInstanceImageBorder.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        UpdateCloudInstanceControlsEnabledState();
+    }
+
+    private void UpdateCloudInstanceControlsEnabledState()
+    {
+        var internetEnabled = !InternetAccessManager.IsInternetAccessDisabled;
+
+        if (RefreshCloudInstancesButton is not null)
+            RefreshCloudInstancesButton.IsEnabled = internetEnabled && !_isCloudInstanceRefreshInProgress;
+
+        if (ImportCloudInstanceButton is not null)
+        {
+            var hasSelection = _selectedCloudInstance is not null;
+            ImportCloudInstanceButton.IsEnabled = internetEnabled && hasSelection;
+        }
+
+        if (ManageCloudInstancesButton is not null)
+            ManageCloudInstancesButton.IsEnabled = internetEnabled;
+
+        if (ImportByIdButton is not null)
+            ImportByIdButton.IsEnabled = internetEnabled;
+    }
+
+    private async Task RefreshCloudInstancesAsync(bool showStatusMessage)
+    {
+        if (_viewModel is null) return;
+        if (_isCloudInstanceRefreshInProgress) return;
+        if (InternetAccessManager.IsInternetAccessDisabled) return;
+
+        _isCloudInstanceRefreshInProgress = true;
+        UpdateCloudInstanceControlsEnabledState();
+
+        try
+        {
+            if (showStatusMessage)
+                _viewModel.ReportStatus("Refreshing shared instances...");
+
+            var store = GetOrCreateCloudInstanceStore();
+            if (store is null) return;
+
+            var entries = await store.GetRegistryEntriesAsync(publicOnly: true);
+            var viewModels = entries
+                .Select(e => new CloudInstanceListEntryViewModel(e))
+                .ToList();
+
+            _viewModel.ReplaceCloudInstances(viewModels);
+            _cloudInstancesLoaded = true;
+
+            if (showStatusMessage)
+                _viewModel.ReportStatus($"Loaded {viewModels.Count} shared instances.");
+        }
+        catch (Exception ex)
+        {
+            if (showStatusMessage)
+                _viewModel.ReportStatus($"Failed to load shared instances: {ex.Message}");
+        }
+        finally
+        {
+            _isCloudInstanceRefreshInProgress = false;
+            UpdateCloudInstanceControlsEnabledState();
+        }
+    }
+
+    private FirebaseInstanceStore? GetOrCreateCloudInstanceStore()
+    {
+        if (_cloudInstanceStore != null) return _cloudInstanceStore;
+
+        try
+        {
+            _cloudInstanceStore = new FirebaseInstanceStore();
+            if (!string.IsNullOrWhiteSpace(_viewModel?.PlayerUid))
+                _cloudInstanceStore.SetPlayerIdentity(_viewModel.PlayerUid, _viewModel.PlayerName);
+            return _cloudInstanceStore;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task ImportCloudInstanceAsync(CloudInstanceListEntryViewModel entry)
+    {
+        if (_viewModel is null) return;
+
+        try
+        {
+            var store = GetOrCreateCloudInstanceStore();
+            if (store is null)
+            {
+                WpfMessageBox.Show(
+                    "Could not connect to cloud services.",
+                    "Simple VS Manager",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
+            // Get the full instance data from registry
+            var registryEntry = await store.GetRegistryEntryAsync(entry.RegistryId);
+            if (registryEntry?.ContentJson is null)
+            {
+                WpfMessageBox.Show(
+                    "Could not retrieve instance data.",
+                    "Simple VS Manager",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
+            // Deserialize the instance
+            var serializable = System.Text.Json.JsonSerializer.Deserialize<SerializableInstance>(registryEntry.ContentJson);
+            if (serializable is null)
+            {
+                WpfMessageBox.Show(
+                    "Could not parse instance data.",
+                    "Simple VS Manager",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
+            ShowImportInstanceDialog(serializable);
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show(
+                $"Failed to import instance:\n{ex.Message}",
+                "Simple VS Manager",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private async Task ImportCloudInstanceByIdAsync(string instanceId)
+    {
+        if (_viewModel is null) return;
+
+        try
+        {
+            var store = GetOrCreateCloudInstanceStore();
+            if (store is null)
+            {
+                WpfMessageBox.Show(
+                    "Could not connect to cloud services.",
+                    "Simple VS Manager",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
+            _viewModel.ReportStatus($"Fetching instance {instanceId}...");
+
+            var registryEntry = await store.GetRegistryEntryAsync(instanceId);
+            if (registryEntry?.ContentJson is null)
+            {
+                WpfMessageBox.Show(
+                    "Instance not found. Please check the ID and try again.",
+                    "Simple VS Manager",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                _viewModel.ReportStatus("Instance not found.");
+                return;
+            }
+
+            var serializable = System.Text.Json.JsonSerializer.Deserialize<SerializableInstance>(registryEntry.ContentJson);
+            if (serializable is null)
+            {
+                WpfMessageBox.Show(
+                    "Could not parse instance data.",
+                    "Simple VS Manager",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
+            ShowImportInstanceDialog(serializable);
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show(
+                $"Failed to import instance:\n{ex.Message}",
+                "Simple VS Manager",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void ShowImportInstanceDialog(SerializableInstance serializable)
+    {
+        if (_viewModel is null || _instanceService is null) return;
+
+        var httpClient = new HttpClient();
+        var modApiService = new ModApiService(httpClient);
+        var sharingService = new InstanceSharingService(_instanceService, modApiService);
+
+        var importDialog = new ImportInstanceDialog(this, serializable, sharingService);
+        if (importDialog.ShowDialog() != true || importDialog.ImportedInstance is null)
+        {
+            _viewModel.ReportStatus("Import cancelled.");
+            return;
+        }
+
+        var imported = importDialog.ImportedInstance;
+        _viewModel.ReportStatus($"Imported instance \"{imported.Name}\".");
+    }
+
+    #endregion
 
     private async Task RefreshManagerUpdateLinkAsync()
     {

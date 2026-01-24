@@ -46,6 +46,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly RelayCommand _clearSearchCommand;
     private readonly ClientSettingsWatcher _clientSettingsWatcher;
     private readonly ObservableCollection<CloudModlistListEntry> _cloudModlists = new();
+    private readonly ObservableCollection<CloudInstanceListEntryViewModel> _cloudInstances = new();
     private readonly ObservableCollection<LocalModlistListEntry> _localModlists = new();
     private readonly UserConfigurationService _configuration;
     private readonly ModDatabaseService _databaseService;
@@ -186,6 +187,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ModsView.Filter = FilterMod;
         SearchResultsView = CollectionViewSource.GetDefaultView(_searchResults);
         CloudModlistsView = CollectionViewSource.GetDefaultView(_cloudModlists);
+        CloudInstancesView = CollectionViewSource.GetDefaultView(_cloudInstances);
         LocalModlistsView = CollectionViewSource.GetDefaultView(_localModlists);
         InstalledTagFilters = new ReadOnlyObservableCollection<TagFilterOptionViewModel>(_installedTagFilters);
         GroupedModsView = CollectionViewSource.GetDefaultView(_groupedModsList);
@@ -239,6 +241,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public ICollectionView SearchResultsView { get; }
 
     public ICollectionView CloudModlistsView { get; }
+
+    public ICollectionView CloudInstancesView { get; }
 
     public ICollectionView LocalModlistsView { get; }
 
@@ -763,6 +767,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     public bool HasCloudModlists => _cloudModlists.Count > 0;
+
+    public bool HasCloudInstances => _cloudInstances.Count > 0;
 
     public bool HasLocalModlists => _localModlists.Count > 0;
 
@@ -1409,6 +1415,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         CloudModlistsView.Refresh();
         OnPropertyChanged(nameof(HasCloudModlists));
         return true;
+    }
+
+    public void ReplaceCloudInstances(IEnumerable<CloudInstanceListEntryViewModel>? entries)
+    {
+        _cloudInstances.Clear();
+
+        if (entries is not null)
+            foreach (var entry in entries)
+                if (entry is not null)
+                    _cloudInstances.Add(entry);
+
+        CloudInstancesView.Refresh();
+        OnPropertyChanged(nameof(HasCloudInstances));
     }
 
     public void ReplaceLocalModlists(IEnumerable<LocalModlistListEntry>? entries)

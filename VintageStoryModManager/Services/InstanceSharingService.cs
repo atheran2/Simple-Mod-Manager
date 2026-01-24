@@ -7,6 +7,17 @@ using VintageStoryModManager.ViewModels;
 
 namespace VintageStoryModManager.Services;
 
+// JSON parsing options for modinfo.json - must allow trailing commas and comments
+// since many mods have non-strict JSON formatting
+internal static class ModInfoJsonOptions
+{
+    public static readonly JsonDocumentOptions DocumentOptions = new()
+    {
+        AllowTrailingCommas = true,
+        CommentHandling = JsonCommentHandling.Skip
+    };
+}
+
 /// <summary>
 ///     Progress information for instance import operations.
 /// </summary>
@@ -280,7 +291,7 @@ public sealed class InstanceSharingService
         try
         {
             var json = File.ReadAllText(modInfoPath);
-            using var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(json, ModInfoJsonOptions.DocumentOptions);
             var root = doc.RootElement;
 
             // Try both modid and modID (some mods use capital ID)
@@ -348,7 +359,7 @@ public sealed class InstanceSharingService
             using var reader = new StreamReader(stream);
             var json = reader.ReadToEnd();
 
-            using var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(json, ModInfoJsonOptions.DocumentOptions);
             var root = doc.RootElement;
 
             // Try both modid and modID (some mods use capital ID)

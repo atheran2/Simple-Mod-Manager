@@ -656,6 +656,7 @@ public sealed class InstanceSharingService
         try
         {
             var modDisplayName = mod.Name ?? mod.ModId ?? "Unknown";
+            System.Diagnostics.Debug.WriteLine($"[InstanceSharing] Attempting to download: {modDisplayName} (modId: {mod.ModId})");
 
             // Try direct lookup by modId first
             var dbMod = await _modApiService.GetModAsync(mod.ModId ?? string.Empty, ct);
@@ -663,18 +664,23 @@ public sealed class InstanceSharingService
             // If not found by modId, try searching by name
             if (dbMod?.Releases == null || dbMod.Releases.Count == 0)
             {
+                System.Diagnostics.Debug.WriteLine($"[InstanceSharing] Direct lookup failed for {mod.ModId}, trying name search");
                 dbMod = await TryFindModByNameAsync(mod.Name, mod.ModId, ct);
             }
 
             if (dbMod?.Releases == null || dbMod.Releases.Count == 0)
             {
+                System.Diagnostics.Debug.WriteLine($"[InstanceSharing] FAILED: No releases for {modDisplayName}");
                 StatusLogService.AppendStatus($"Mod '{modDisplayName}' not found in database, skipping", true);
                 return;
             }
 
+            System.Diagnostics.Debug.WriteLine($"[InstanceSharing] Found {dbMod.Releases.Count} releases for {modDisplayName}");
+
             var release = FindBestRelease(dbMod.Releases, mod.Version);
             if (release == null || string.IsNullOrWhiteSpace(release.MainFile))
             {
+                System.Diagnostics.Debug.WriteLine($"[InstanceSharing] FAILED: No suitable release for {modDisplayName} (version: {mod.Version})");
                 StatusLogService.AppendStatus($"No suitable release found for '{modDisplayName}', skipping", true);
                 return;
             }
@@ -686,15 +692,22 @@ public sealed class InstanceSharingService
                 fileName = "_" + fileName;
 
             var destPath = Path.Combine(modsPath, fileName);
+            System.Diagnostics.Debug.WriteLine($"[InstanceSharing] Downloading {modDisplayName} to {fileName}");
 
             var success = await _modApiService.DownloadModAsync(release.MainFile, destPath, null, ct);
             if (!success)
             {
+                System.Diagnostics.Debug.WriteLine($"[InstanceSharing] FAILED: Download failed for {modDisplayName}");
                 StatusLogService.AppendStatus($"Failed to download '{modDisplayName}'", true);
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[InstanceSharing] SUCCESS: Downloaded {modDisplayName}");
             }
         }
         catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[InstanceSharing] EXCEPTION for {mod.Name ?? mod.ModId}: {ex.Message}");
             StatusLogService.AppendStatus($"Error downloading '{mod.Name ?? mod.ModId}': {ex.Message}", true);
         }
     }

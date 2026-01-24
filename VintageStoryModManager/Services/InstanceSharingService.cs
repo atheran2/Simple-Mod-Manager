@@ -572,6 +572,9 @@ public sealed class InstanceSharingService
         // Download mods
         if (source.Mods != null)
         {
+            var downloadedCount = 0;
+            var failedCount = 0;
+
             foreach (var mod in source.Mods)
             {
                 ct.ThrowIfCancellationRequested();
@@ -584,7 +587,20 @@ public sealed class InstanceSharingService
                     CurrentModName = mod.Name ?? mod.ModId
                 });
 
-                await TryDownloadModAsync(mod, instance.ModsPath, ct);
+                var success = await TryDownloadModAsync(mod, instance.ModsPath, ct);
+                if (success)
+                    downloadedCount++;
+                else
+                    failedCount++;
+
+                // Small delay to avoid rate limiting
+                await Task.Delay(50, ct);
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[InstanceSharing] Download complete: {downloadedCount} succeeded, {failedCount} failed out of {source.Mods.Count} total");
+            if (failedCount > 0)
+            {
+                StatusLogService.AppendStatus($"Downloaded {downloadedCount} mods, {failedCount} failed", true);
             }
         }
 
@@ -651,7 +667,7 @@ public sealed class InstanceSharingService
         return instance;
     }
 
-    private async Task TryDownloadModAsync(SerializableInstanceMod mod, string modsPath, CancellationToken ct)
+    private async Task<bool> TryDownloadModAsync(SerializableInstanceMod mod, string modsPath, CancellationToken ct)
     {
         try
         {
@@ -672,7 +688,7 @@ public sealed class InstanceSharingService
             {
                 System.Diagnostics.Debug.WriteLine($"[InstanceSharing] FAILED: No releases for {modDisplayName}");
                 StatusLogService.AppendStatus($"Mod '{modDisplayName}' not found in database, skipping", true);
-                return;
+                return false;
             }
 
             System.Diagnostics.Debug.WriteLine($"[InstanceSharing] Found {dbMod.Releases.Count} releases for {modDisplayName}");
@@ -682,7 +698,7 @@ public sealed class InstanceSharingService
             {
                 System.Diagnostics.Debug.WriteLine($"[InstanceSharing] FAILED: No suitable release for {modDisplayName} (version: {mod.Version})");
                 StatusLogService.AppendStatus($"No suitable release found for '{modDisplayName}', skipping", true);
-                return;
+                return false;
             }
 
             var fileName = release.Filename ?? $"{mod.ModId}.zip";
@@ -699,16 +715,17 @@ public sealed class InstanceSharingService
             {
                 System.Diagnostics.Debug.WriteLine($"[InstanceSharing] FAILED: Download failed for {modDisplayName}");
                 StatusLogService.AppendStatus($"Failed to download '{modDisplayName}'", true);
+                return false;
             }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine($"[InstanceSharing] SUCCESS: Downloaded {modDisplayName}");
-            }
+
+            System.Diagnostics.Debug.WriteLine($"[InstanceSharing] SUCCESS: Downloaded {modDisplayName}");
+            return true;
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[InstanceSharing] EXCEPTION for {mod.Name ?? mod.ModId}: {ex.Message}");
             StatusLogService.AppendStatus($"Error downloading '{mod.Name ?? mod.ModId}': {ex.Message}", true);
+            return false;
         }
     }
 

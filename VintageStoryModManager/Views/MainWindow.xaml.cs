@@ -13582,8 +13582,12 @@ public partial class MainWindow : Window
                 return;
             }
 
-            // Deserialize the instance
-            var serializable = System.Text.Json.JsonSerializer.Deserialize<SerializableInstance>(registryEntry.ContentJson);
+            // Deserialize the instance (use case-insensitive matching since data is stored in camelCase)
+            var jsonOptions = new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+            var serializable = System.Text.Json.JsonSerializer.Deserialize<SerializableInstance>(registryEntry.ContentJson, jsonOptions);
             if (serializable is null)
             {
                 WpfMessageBox.Show(
@@ -13637,7 +13641,12 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var serializable = System.Text.Json.JsonSerializer.Deserialize<SerializableInstance>(registryEntry.ContentJson);
+            // Use case-insensitive matching since data is stored in camelCase
+            var jsonOptions = new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+            var serializable = System.Text.Json.JsonSerializer.Deserialize<SerializableInstance>(registryEntry.ContentJson, jsonOptions);
             if (serializable is null)
             {
                 WpfMessageBox.Show(

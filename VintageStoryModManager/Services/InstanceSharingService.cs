@@ -638,17 +638,27 @@ public sealed class InstanceSharingService
     {
         try
         {
+            var modDisplayName = mod.Name ?? mod.ModId ?? "Unknown";
+
+            // Try direct lookup by modId first
             var dbMod = await _modApiService.GetModAsync(mod.ModId ?? string.Empty, ct);
+
+            // If not found by modId, try searching by name
             if (dbMod?.Releases == null || dbMod.Releases.Count == 0)
             {
-                StatusLogService.AppendStatus($"Mod '{mod.Name ?? mod.ModId}' not found in database, skipping", true);
+                dbMod = await TryFindModByNameAsync(mod.Name, mod.ModId, ct);
+            }
+
+            if (dbMod?.Releases == null || dbMod.Releases.Count == 0)
+            {
+                StatusLogService.AppendStatus($"Mod '{modDisplayName}' not found in database, skipping", true);
                 return;
             }
 
             var release = FindBestRelease(dbMod.Releases, mod.Version);
             if (release == null || string.IsNullOrWhiteSpace(release.MainFile))
             {
-                StatusLogService.AppendStatus($"No suitable release found for '{mod.Name ?? mod.ModId}', skipping", true);
+                StatusLogService.AppendStatus($"No suitable release found for '{modDisplayName}', skipping", true);
                 return;
             }
 
@@ -663,13 +673,65 @@ public sealed class InstanceSharingService
             var success = await _modApiService.DownloadModAsync(release.MainFile, destPath, null, ct);
             if (!success)
             {
-                StatusLogService.AppendStatus($"Failed to download '{mod.Name ?? mod.ModId}'", true);
+                StatusLogService.AppendStatus($"Failed to download '{modDisplayName}'", true);
             }
         }
         catch (Exception ex)
         {
             StatusLogService.AppendStatus($"Error downloading '{mod.Name ?? mod.ModId}': {ex.Message}", true);
         }
+    }
+
+    private async Task<DownloadableMod?> TryFindModByNameAsync(string? modName, string? modId, CancellationToken ct)
+    {
+        DownloadableModOnList? foundMod = null;
+
+        // Try searching by name first
+        if (!string.IsNullOrWhiteSpace(modName))
+        {
+            var searchResults = await _modApiService.QueryModsAsync(modName, null, null, null, cancellationToken: ct);
+            if (searchResults.Count > 0)
+            {
+                // Look for exact name match first
+                foundMod = searchResults.FirstOrDefault(m =>
+                    string.Equals(m.Name, modName, StringComparison.OrdinalIgnoreCase));
+
+                // Look for modId match in ModIdStrings
+                if (foundMod == null && !string.IsNullOrWhiteSpace(modId))
+                {
+                    foundMod = searchResults.FirstOrDefault(m =>
+                        m.ModIdStrings?.Any(s => string.Equals(s, modId, StringComparison.OrdinalIgnoreCase)) == true);
+                }
+
+                // If only one result, use it
+                if (foundMod == null && searchResults.Count == 1)
+                    foundMod = searchResults[0];
+            }
+        }
+
+        // Try searching by modId as text if not found yet
+        if (foundMod == null && !string.IsNullOrWhiteSpace(modId))
+        {
+            var searchResults = await _modApiService.QueryModsAsync(modId, null, null, null, cancellationToken: ct);
+            if (searchResults.Count > 0)
+            {
+                // Look for modId match in ModIdStrings
+                foundMod = searchResults.FirstOrDefault(m =>
+                    m.ModIdStrings?.Any(s => string.Equals(s, modId, StringComparison.OrdinalIgnoreCase)) == true);
+
+                // If only one result, use it
+                if (foundMod == null && searchResults.Count == 1)
+                    foundMod = searchResults[0];
+            }
+        }
+
+        // If we found a mod in the list, fetch its full details (with releases)
+        if (foundMod != null)
+        {
+            return await _modApiService.GetModAsync(foundMod.ModId, ct);
+        }
+
+        return null;
     }
 
     private static DownloadableModRelease? FindBestRelease(List<DownloadableModRelease> releases, string? targetVersion)

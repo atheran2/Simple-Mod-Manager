@@ -283,9 +283,12 @@ public sealed class InstanceSharingService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            var modId = root.TryGetProperty("modid", out var modIdProp)
-                ? modIdProp.GetString()
-                : null;
+            // Try both modid and modID (some mods use capital ID)
+            string? modId = null;
+            if (root.TryGetProperty("modid", out var modIdProp))
+                modId = modIdProp.GetString();
+            else if (root.TryGetProperty("modID", out modIdProp))
+                modId = modIdProp.GetString();
 
             var version = root.TryGetProperty("version", out var versionProp)
                 ? versionProp.GetString()
@@ -348,9 +351,12 @@ public sealed class InstanceSharingService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            var modId = root.TryGetProperty("modid", out var modIdProp)
-                ? modIdProp.GetString()
-                : null;
+            // Try both modid and modID (some mods use capital ID)
+            string? modId = null;
+            if (root.TryGetProperty("modid", out var modIdProp))
+                modId = modIdProp.GetString();
+            else if (root.TryGetProperty("modID", out modIdProp))
+                modId = modIdProp.GetString();
 
             var version = root.TryGetProperty("version", out var versionProp)
                 ? versionProp.GetString()

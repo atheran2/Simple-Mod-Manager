@@ -149,22 +149,10 @@ public partial class ShareInstanceDialog : Window
         try
         {
             ShareButton.IsEnabled = false;
-            ShareButton.Content = "Uploading...";
+            ShareButton.Content = "Checking...";
 
             // Set player identity
             _cloudStore.SetPlayerIdentity(_playerUid, _playerName);
-
-            // Check for free slot
-            var freeSlot = await _cloudStore.GetFirstFreeSlotAsync();
-            if (freeSlot == null)
-            {
-                MessageBox.Show(
-                    "All instance slots are in use (max 3).\n\nDelete an existing shared instance to free up a slot.",
-                    "Share Instance",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
-                return;
-            }
 
             // Build the serializable instance
             var serializable = _sharingService.BuildSerializableInstance(
@@ -181,6 +169,40 @@ public partial class ShareInstanceDialog : Window
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
             };
             var instanceJson = JsonSerializer.Serialize(serializable, jsonOptions);
+
+            // Check if an identical instance already exists
+            var existingSlots = await _cloudStore.GetUserSlotsAsync();
+            var existingSlot = FindMatchingSlot(existingSlots, instanceJson);
+
+            if (existingSlot != null)
+            {
+                // Instance already exists with same content
+                var result = MessageBox.Show(
+                    $"An identical instance already exists in {existingSlot.SlotLabel}.\n\n" +
+                    "Do you want to upload anyway (will use a new slot)?",
+                    "Instance Already Exists",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (result != MessageBoxResult.Yes)
+                {
+                    return;
+                }
+            }
+
+            ShareButton.Content = "Uploading...";
+
+            // Check for free slot
+            var freeSlot = await _cloudStore.GetFirstFreeSlotAsync();
+            if (freeSlot == null)
+            {
+                MessageBox.Show(
+                    "All instance slots are in use (max 3).\n\nDelete an existing shared instance to free up a slot.",
+                    "Share Instance",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
 
             // Upload
             var isPublic = PublicVisibilityRadio.IsChecked == true;
@@ -211,6 +233,75 @@ public partial class ShareInstanceDialog : Window
             ShareButton.IsEnabled = true;
             ShareButton.Content = "Share";
         }
+    }
+
+    private static UserInstanceSlot? FindMatchingSlot(IReadOnlyList<UserInstanceSlot> slots, string newInstanceJson)
+    {
+        // Parse the new instance to compare key fields
+        try
+        {
+            using var newDoc = JsonDocument.Parse(newInstanceJson);
+            var newRoot = newDoc.RootElement;
+
+            var newName = newRoot.TryGetProperty("name", out var nameProp) ? nameProp.GetString() : null;
+            var newMods = newRoot.TryGetProperty("mods", out var modsProp) ? modsProp.GetArrayLength() : 0;
+
+            // Build a simple hash of mod IDs and versions for comparison
+            var newModsHash = BuildModsHash(newRoot);
+
+            foreach (var slot in slots)
+            {
+                if (string.IsNullOrWhiteSpace(slot.ContentJson))
+                    continue;
+
+                try
+                {
+                    using var existingDoc = JsonDocument.Parse(slot.ContentJson);
+                    var existingRoot = existingDoc.RootElement;
+
+                    var existingName = existingRoot.TryGetProperty("name", out var existingNameProp)
+                        ? existingNameProp.GetString()
+                        : null;
+
+                    // Check if names match
+                    if (!string.Equals(newName, existingName, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    // Check if mods match
+                    var existingModsHash = BuildModsHash(existingRoot);
+                    if (newModsHash == existingModsHash)
+                        return slot;
+                }
+                catch
+                {
+                    // Skip slots with invalid JSON
+                }
+            }
+        }
+        catch
+        {
+            // If we can't parse the new instance, don't block upload
+        }
+
+        return null;
+    }
+
+    private static string BuildModsHash(JsonElement root)
+    {
+        if (!root.TryGetProperty("mods", out var modsArray))
+            return string.Empty;
+
+        var modEntries = new List<string>();
+        foreach (var mod in modsArray.EnumerateArray())
+        {
+            var modId = mod.TryGetProperty("modId", out var idProp) ? idProp.GetString() ?? "" : "";
+            var version = mod.TryGetProperty("version", out var vProp) ? vProp.GetString() ?? "" : "";
+            var isActive = mod.TryGetProperty("isActive", out var aProp) && aProp.GetBoolean();
+            modEntries.Add($"{modId}|{version}|{isActive}");
+        }
+
+        modEntries.Sort(StringComparer.OrdinalIgnoreCase);
+        return string.Join(";", modEntries);
     }
 
     private static string SanitizeFileName(string name)

@@ -13283,6 +13283,9 @@ public partial class MainWindow : Window
 
     private void CloudInstancesDataGrid_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        // Prevent this event from bubbling up to the TabControl
+        e.Handled = true;
+
         if (CloudInstancesDataGrid?.SelectedItem is CloudInstanceListEntryViewModel entry)
             SetCloudInstanceSelection(entry);
         else

@@ -75,11 +75,19 @@ public sealed class InstanceSharingService
 
     private readonly InstanceService _instanceService;
     private readonly IModApiService _modApiService;
+    private readonly ModDatabaseService _modDatabaseService;
+    private readonly ModUpdateService _modUpdateService;
 
-    public InstanceSharingService(InstanceService instanceService, IModApiService modApiService)
+    public InstanceSharingService(
+        InstanceService instanceService,
+        IModApiService modApiService,
+        ModDatabaseService modDatabaseService,
+        ModUpdateService modUpdateService)
     {
         _instanceService = instanceService;
         _modApiService = modApiService;
+        _modDatabaseService = modDatabaseService;
+        _modUpdateService = modUpdateService;
     }
 
     /// <summary>
@@ -493,19 +501,31 @@ public sealed class InstanceSharingService
                     DisplayName = mod.Name ?? mod.ModId ?? "Unknown"
                 };
 
-                // Try to find the mod in the database
+                // Try to find the mod in the database using ModDatabaseService (same as modlist install)
                 try
                 {
-                    var dbMod = await _modApiService.GetModAsync(mod.ModId ?? string.Empty, ct);
-                    if (dbMod != null && dbMod.Releases?.Count > 0)
+                    var info = await _modDatabaseService
+                        .TryLoadDatabaseInfoAsync(mod.ModId ?? string.Empty, mod.Version, null, false, ct)
+                        .ConfigureAwait(false);
+
+                    if (info != null && info.Releases?.Count > 0)
                     {
                         // Find the matching version or latest
-                        var release = FindBestRelease(dbMod.Releases, mod.Version);
-                        if (release != null)
+                        ModReleaseInfo? release = null;
+                        if (!string.IsNullOrWhiteSpace(mod.Version))
+                        {
+                            var normalizedVersion = VersionStringUtility.Normalize(mod.Version);
+                            release = info.Releases.FirstOrDefault(r =>
+                                string.Equals(r.Version?.Trim(), mod.Version, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(r.NormalizedVersion, normalizedVersion, StringComparison.OrdinalIgnoreCase));
+                        }
+                        release ??= info.Releases.FirstOrDefault();
+
+                        if (release != null && release.DownloadUri != null)
                         {
                             modInfo.IsAvailable = true;
-                            modInfo.DownloadUrl = release.MainFile;
-                            modInfo.FileName = release.Filename;
+                            modInfo.DownloadUrl = release.DownloadUri.ToString();
+                            modInfo.FileName = release.FileName;
                         }
                         else
                         {
@@ -671,133 +691,89 @@ public sealed class InstanceSharingService
     {
         try
         {
-            var modDisplayName = mod.Name ?? mod.ModId ?? "Unknown";
-            System.Diagnostics.Debug.WriteLine($"[InstanceSharing] Attempting to download: {modDisplayName} (modId: {mod.ModId})");
+            var modId = mod.ModId?.Trim() ?? string.Empty;
+            var modDisplayName = mod.Name ?? modId ?? "Unknown";
 
-            // Try direct lookup by modId first
-            var dbMod = await _modApiService.GetModAsync(mod.ModId ?? string.Empty, ct);
-
-            // If not found by modId, try searching by name
-            if (dbMod?.Releases == null || dbMod.Releases.Count == 0)
+            if (string.IsNullOrWhiteSpace(modId))
             {
-                System.Diagnostics.Debug.WriteLine($"[InstanceSharing] Direct lookup failed for {mod.ModId}, trying name search");
-                dbMod = await TryFindModByNameAsync(mod.Name, mod.ModId, ct);
+                StatusLogService.AppendStatus($"Mod '{modDisplayName}' has no ID, skipping", true);
+                return false;
             }
 
-            if (dbMod?.Releases == null || dbMod.Releases.Count == 0)
+            // Use the same approach as modlist preset install - use ModDatabaseService
+            var info = await _modDatabaseService
+                .TryLoadDatabaseInfoAsync(modId, mod.Version, null, false, ct)
+                .ConfigureAwait(false);
+
+            if (info == null)
             {
-                System.Diagnostics.Debug.WriteLine($"[InstanceSharing] FAILED: No releases for {modDisplayName}");
                 StatusLogService.AppendStatus($"Mod '{modDisplayName}' not found in database, skipping", true);
                 return false;
             }
 
-            System.Diagnostics.Debug.WriteLine($"[InstanceSharing] Found {dbMod.Releases.Count} releases for {modDisplayName}");
-
-            var release = FindBestRelease(dbMod.Releases, mod.Version);
-            if (release == null || string.IsNullOrWhiteSpace(release.MainFile))
+            // Find the best release
+            var releases = info.Releases ?? Array.Empty<ModReleaseInfo>();
+            if (releases.Count == 0)
             {
-                System.Diagnostics.Debug.WriteLine($"[InstanceSharing] FAILED: No suitable release for {modDisplayName} (version: {mod.Version})");
-                StatusLogService.AppendStatus($"No suitable release found for '{modDisplayName}', skipping", true);
+                StatusLogService.AppendStatus($"No releases found for '{modDisplayName}', skipping", true);
                 return false;
             }
 
-            var fileName = release.Filename ?? $"{mod.ModId}.zip";
+            // Try to match version, otherwise use latest
+            ModReleaseInfo? release = null;
+            if (!string.IsNullOrWhiteSpace(mod.Version))
+            {
+                var normalizedVersion = VersionStringUtility.Normalize(mod.Version);
+                release = releases.FirstOrDefault(r =>
+                    string.Equals(r.Version?.Trim(), mod.Version, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(r.NormalizedVersion, normalizedVersion, StringComparison.OrdinalIgnoreCase));
+            }
 
-            // Add underscore prefix if mod should be disabled
+            // Fall back to latest release
+            release ??= releases.FirstOrDefault();
+
+            if (release == null || release.DownloadUri == null)
+            {
+                StatusLogService.AppendStatus($"No suitable release for '{modDisplayName}', skipping", true);
+                return false;
+            }
+
+            // Build the target path
+            var fileName = release.FileName ?? $"{modId}.zip";
             if (!mod.IsActive)
                 fileName = "_" + fileName;
 
-            var destPath = Path.Combine(modsPath, fileName);
-            System.Diagnostics.Debug.WriteLine($"[InstanceSharing] Downloading {modDisplayName} to {fileName}");
+            var targetPath = Path.Combine(modsPath, fileName);
 
-            var success = await _modApiService.DownloadModAsync(release.MainFile, destPath, null, ct);
-            if (!success)
+            // Use ModUpdateService for downloading (handles caching, retries, etc.)
+            var descriptor = new ModUpdateDescriptor(
+                modId,
+                modDisplayName,
+                release.DownloadUri,
+                targetPath,
+                false,
+                release.FileName,
+                release.Version,
+                null);
+
+            var result = await _modUpdateService
+                .UpdateAsync(descriptor, false, null, ct)
+                .ConfigureAwait(false);
+
+            if (!result.Success)
             {
-                System.Diagnostics.Debug.WriteLine($"[InstanceSharing] FAILED: Download failed for {modDisplayName}");
-                StatusLogService.AppendStatus($"Failed to download '{modDisplayName}'", true);
+                var errorMsg = string.IsNullOrWhiteSpace(result.ErrorMessage) ? "Download failed" : result.ErrorMessage;
+                StatusLogService.AppendStatus($"Failed to download '{modDisplayName}': {errorMsg}", true);
                 return false;
             }
 
-            System.Diagnostics.Debug.WriteLine($"[InstanceSharing] SUCCESS: Downloaded {modDisplayName}");
             return true;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[InstanceSharing] EXCEPTION for {mod.Name ?? mod.ModId}: {ex.Message}");
             StatusLogService.AppendStatus($"Error downloading '{mod.Name ?? mod.ModId}': {ex.Message}", true);
             return false;
         }
-    }
-
-    private async Task<DownloadableMod?> TryFindModByNameAsync(string? modName, string? modId, CancellationToken ct)
-    {
-        DownloadableModOnList? foundMod = null;
-
-        // Try searching by name first
-        if (!string.IsNullOrWhiteSpace(modName))
-        {
-            var searchResults = await _modApiService.QueryModsAsync(modName, null, null, null, cancellationToken: ct);
-            if (searchResults.Count > 0)
-            {
-                // Look for exact name match first
-                foundMod = searchResults.FirstOrDefault(m =>
-                    string.Equals(m.Name, modName, StringComparison.OrdinalIgnoreCase));
-
-                // Look for modId match in ModIdStrings
-                if (foundMod == null && !string.IsNullOrWhiteSpace(modId))
-                {
-                    foundMod = searchResults.FirstOrDefault(m =>
-                        m.ModIdStrings?.Any(s => string.Equals(s, modId, StringComparison.OrdinalIgnoreCase)) == true);
-                }
-
-                // If only one result, use it
-                if (foundMod == null && searchResults.Count == 1)
-                    foundMod = searchResults[0];
-            }
-        }
-
-        // Try searching by modId as text if not found yet
-        if (foundMod == null && !string.IsNullOrWhiteSpace(modId))
-        {
-            var searchResults = await _modApiService.QueryModsAsync(modId, null, null, null, cancellationToken: ct);
-            if (searchResults.Count > 0)
-            {
-                // Look for modId match in ModIdStrings
-                foundMod = searchResults.FirstOrDefault(m =>
-                    m.ModIdStrings?.Any(s => string.Equals(s, modId, StringComparison.OrdinalIgnoreCase)) == true);
-
-                // If only one result, use it
-                if (foundMod == null && searchResults.Count == 1)
-                    foundMod = searchResults[0];
-            }
-        }
-
-        // If we found a mod in the list, fetch its full details (with releases)
-        if (foundMod != null)
-        {
-            return await _modApiService.GetModAsync(foundMod.ModId, ct);
-        }
-
-        return null;
-    }
-
-    private static DownloadableModRelease? FindBestRelease(List<DownloadableModRelease> releases, string? targetVersion)
-    {
-        if (releases.Count == 0)
-            return null;
-
-        // If we have a target version, try to find an exact match
-        if (!string.IsNullOrWhiteSpace(targetVersion))
-        {
-            var exactMatch = releases.FirstOrDefault(r =>
-                string.Equals(r.ModVersion, targetVersion, StringComparison.OrdinalIgnoreCase));
-
-            if (exactMatch != null)
-                return exactMatch;
-        }
-
-        // Otherwise return the first (usually latest) release
-        return releases.FirstOrDefault();
     }
 
     #endregion

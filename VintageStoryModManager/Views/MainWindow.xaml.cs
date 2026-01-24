@@ -2926,7 +2926,7 @@ public partial class MainWindow : Window
 
         var httpClient = new HttpClient();
         var modApiService = new ModApiService(httpClient);
-        var sharingService = new InstanceSharingService(_instanceService, modApiService);
+        var sharingService = new InstanceSharingService(_instanceService, modApiService, _modDatabaseService, _modUpdateService);
 
         var cloudStore = GetOrCreateCloudInstanceStore();
         var playerUid = _viewModel.PlayerUid;
@@ -8823,7 +8823,7 @@ public partial class MainWindow : Window
             AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
         });
         var modApiService = new ModApiService(httpClient);
-        var sharingService = new InstanceSharingService(_instanceService, modApiService);
+        var sharingService = new InstanceSharingService(_instanceService, modApiService, _modDatabaseService, _modUpdateService);
         var mods = _viewModel?.GetInstalledModsSnapshot();
 
         // Create cloud store for upload
@@ -8859,7 +8859,7 @@ public partial class MainWindow : Window
             AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
         });
         var modApiService = new ModApiService(httpClient);
-        var sharingService = new InstanceSharingService(_instanceService, modApiService);
+        var sharingService = new InstanceSharingService(_instanceService, modApiService, _modDatabaseService, _modUpdateService);
         var sourceInstance = await sharingService.LoadFromFileAsync(openDialog.FileName);
 
         if (sourceInstance == null)
@@ -13675,7 +13675,7 @@ public partial class MainWindow : Window
 
         var httpClient = new HttpClient();
         var modApiService = new ModApiService(httpClient);
-        var sharingService = new InstanceSharingService(_instanceService, modApiService);
+        var sharingService = new InstanceSharingService(_instanceService, modApiService, _modDatabaseService, _modUpdateService);
 
         var importDialog = new ImportInstanceDialog(this, serializable, sharingService);
         if (importDialog.ShowDialog() != true || importDialog.ImportedInstance is null)

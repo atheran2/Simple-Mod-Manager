@@ -16,6 +16,46 @@ internal static class ModInfoJsonOptions
         AllowTrailingCommas = true,
         CommentHandling = JsonCommentHandling.Skip
     };
+
+    /// <summary>
+    /// Gets a string property from a JsonElement using case-insensitive property name matching.
+    /// </summary>
+    public static string? GetStringPropertyIgnoreCase(JsonElement element, string propertyName)
+    {
+        foreach (var prop in element.EnumerateObject())
+        {
+            if (string.Equals(prop.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                return prop.Value.ValueKind == JsonValueKind.String ? prop.Value.GetString() : null;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Converts a name to a modId format (lowercase letters and digits only).
+    /// This matches the logic in ModDiscoveryService.ToModId.
+    /// </summary>
+    public static string ToModId(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "mod";
+
+        var builder = new System.Text.StringBuilder(name.Length);
+        foreach (var ch in name)
+        {
+            if (char.IsLetter(ch))
+            {
+                builder.Append(char.ToLowerInvariant(ch));
+            }
+            else if (char.IsDigit(ch))
+            {
+                if (builder.Length == 0) builder.Append('m');
+                builder.Append(ch);
+            }
+        }
+
+        return builder.Length == 0 ? "mod" : builder.ToString();
+    }
 }
 
 /// <summary>
@@ -302,20 +342,10 @@ public sealed class InstanceSharingService
             using var doc = JsonDocument.Parse(json, ModInfoJsonOptions.DocumentOptions);
             var root = doc.RootElement;
 
-            // Try both modid and modID (some mods use capital ID)
-            string? modId = null;
-            if (root.TryGetProperty("modid", out var modIdProp))
-                modId = modIdProp.GetString();
-            else if (root.TryGetProperty("modID", out modIdProp))
-                modId = modIdProp.GetString();
-
-            var version = root.TryGetProperty("version", out var versionProp)
-                ? versionProp.GetString()
-                : null;
-
-            var name = root.TryGetProperty("name", out var nameProp)
-                ? nameProp.GetString()
-                : null;
+            // Use case-insensitive property lookup
+            var modId = ModInfoJsonOptions.GetStringPropertyIgnoreCase(root, "modid");
+            var version = ModInfoJsonOptions.GetStringPropertyIgnoreCase(root, "version");
+            var name = ModInfoJsonOptions.GetStringPropertyIgnoreCase(root, "name");
 
             if (string.IsNullOrWhiteSpace(modId))
                 modId = Path.GetFileName(folderPath);
@@ -370,20 +400,10 @@ public sealed class InstanceSharingService
             using var doc = JsonDocument.Parse(json, ModInfoJsonOptions.DocumentOptions);
             var root = doc.RootElement;
 
-            // Try both modid and modID (some mods use capital ID)
-            string? modId = null;
-            if (root.TryGetProperty("modid", out var modIdProp))
-                modId = modIdProp.GetString();
-            else if (root.TryGetProperty("modID", out modIdProp))
-                modId = modIdProp.GetString();
-
-            var version = root.TryGetProperty("version", out var versionProp)
-                ? versionProp.GetString()
-                : null;
-
-            var name = root.TryGetProperty("name", out var nameProp)
-                ? nameProp.GetString()
-                : null;
+            // Use case-insensitive property lookup
+            var modId = ModInfoJsonOptions.GetStringPropertyIgnoreCase(root, "modid");
+            var version = ModInfoJsonOptions.GetStringPropertyIgnoreCase(root, "version");
+            var name = ModInfoJsonOptions.GetStringPropertyIgnoreCase(root, "name");
 
             // Check if mod is disabled (filename starts with underscore or has .disabled extension)
             var fileName = Path.GetFileName(zipPath);
@@ -507,6 +527,37 @@ public sealed class InstanceSharingService
                     var info = await _modDatabaseService
                         .TryLoadDatabaseInfoAsync(mod.ModId ?? string.Empty, mod.Version, null, false, ct)
                         .ConfigureAwait(false);
+
+                    // If not found by modId and we have a name, try searching by name as fallback
+                    if ((info == null || info.Releases?.Count == 0) && !string.IsNullOrWhiteSpace(mod.Name))
+                    {
+                        // Extract first word/token from mod name for broader search (e.g., "Cairns" from "Cairns 1.2 - Recoverable Stones")
+                        var searchTerm = mod.Name;
+                        var firstSpace = mod.Name.IndexOf(' ');
+                        if (firstSpace > 2)
+                            searchTerm = mod.Name.Substring(0, firstSpace);
+
+                        var searchResults = await _modDatabaseService
+                            .SearchModsAsync(searchTerm, 10, ct)
+                            .ConfigureAwait(false);
+
+                        // Look for a match - try exact name, contains, or alternate IDs
+                        var matchingResult = searchResults.FirstOrDefault(r =>
+                            string.Equals(r.Name, mod.Name, StringComparison.OrdinalIgnoreCase) ||
+                            r.Name?.Contains(mod.Name, StringComparison.OrdinalIgnoreCase) == true ||
+                            mod.Name.Contains(r.Name ?? "", StringComparison.OrdinalIgnoreCase) ||
+                            r.AlternateIds?.Any(altId =>
+                                mod.Name.Replace(" ", "").Replace("-", "").Replace(".", "")
+                                    .Contains(altId, StringComparison.OrdinalIgnoreCase)) == true);
+
+                        if (matchingResult != null && !string.IsNullOrWhiteSpace(matchingResult.ModId))
+                        {
+                            // Found a match by name, now load the full info
+                            info = await _modDatabaseService
+                                .TryLoadDatabaseInfoAsync(matchingResult.ModId, mod.Version, null, false, ct)
+                                .ConfigureAwait(false);
+                        }
+                    }
 
                     if (info != null && info.Releases?.Count > 0)
                     {

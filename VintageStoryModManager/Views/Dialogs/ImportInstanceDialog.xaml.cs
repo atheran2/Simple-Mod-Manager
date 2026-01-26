@@ -16,6 +16,16 @@ public sealed class ImportModItemViewModel
     public bool IsAvailable { get; init; }
     public string? UnavailableReason { get; init; }
     public string StatusIcon => IsAvailable ? "\u2714" : "\u26A0"; // check mark or warning
+
+    public override string ToString()
+    {
+        var status = IsAvailable ? "✓" : "⚠";
+        var name = DisplayName ?? "Unknown";
+        var modId = ModId ?? "?";
+        var ver = !string.IsNullOrWhiteSpace(Version) ? Version : "?";
+        var reason = !string.IsNullOrWhiteSpace(UnavailableReason) ? $" [{UnavailableReason}]" : "";
+        return $"{status} {name} ({modId}) v{ver}{reason}";
+    }
 }
 
 public partial class ImportInstanceDialog : Window

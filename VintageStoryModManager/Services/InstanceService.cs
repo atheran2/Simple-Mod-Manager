@@ -72,6 +72,36 @@ public sealed class InstanceService
     public string BaseModsPath => Path.Combine(_instancesRootPath, BaseModsDirectoryName);
 
     /// <summary>
+    ///     Gets the base mods path for a specific VS version.
+    ///     Falls back to the unversioned root if version is null or empty.
+    /// </summary>
+    public string GetVersionedBaseModsPath(string? version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+            return BaseModsPath;
+
+        var sanitized = SanitizeFolderName(version.Trim());
+        return string.IsNullOrWhiteSpace(sanitized)
+            ? BaseModsPath
+            : Path.Combine(BaseModsPath, sanitized);
+    }
+
+    /// <summary>
+    ///     Returns the list of version subfolder names that exist under _BaseMods.
+    /// </summary>
+    public IReadOnlyList<string> GetExistingBaseModVersions()
+    {
+        if (!Directory.Exists(BaseModsPath))
+            return Array.Empty<string>();
+
+        return Directory.GetDirectories(BaseModsPath)
+            .Select(Path.GetFileName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray()!;
+    }
+
+    /// <summary>
     ///     Gets or sets whether to copy base mods when creating new instances.
     /// </summary>
     public bool CopyBaseModsOnCreate
@@ -237,16 +267,22 @@ public sealed class InstanceService
 
     /// <summary>
     ///     Copies all mods from the base mods directory to a new instance.
+    ///     Prefers the versioned subfolder; falls back to the flat root.
     /// </summary>
     private void CopyBaseModsToInstance(GameInstance instance)
     {
-        if (!Directory.Exists(BaseModsPath))
+        // Prefer versioned folder; fall back to flat root
+        var sourcePath = Directory.Exists(GetVersionedBaseModsPath(instance.TargetVsVersion))
+            ? GetVersionedBaseModsPath(instance.TargetVsVersion)
+            : BaseModsPath;
+
+        if (!Directory.Exists(sourcePath))
             return;
 
         try
         {
-            var modFiles = Directory.GetFiles(BaseModsPath, "*.zip", SearchOption.TopDirectoryOnly)
-                .Concat(Directory.GetFiles(BaseModsPath, "*.cs", SearchOption.TopDirectoryOnly));
+            var modFiles = Directory.GetFiles(sourcePath, "*.zip", SearchOption.TopDirectoryOnly)
+                .Concat(Directory.GetFiles(sourcePath, "*.cs", SearchOption.TopDirectoryOnly));
 
             foreach (var modFile in modFiles)
             {
@@ -257,32 +293,25 @@ public sealed class InstanceService
         }
         catch
         {
-            // Ignore errors - base mods are optional
+            // Ignore copy errors
         }
     }
 
     /// <summary>
-    ///     Gets the list of mods in the base mods directory.
+    ///     Gets the list of mod file names in the base mods directory for a given version.
+    ///     Passing null or empty falls back to the unversioned root.
     /// </summary>
-    public IReadOnlyList<string> GetBaseModFiles()
+    public IEnumerable<string> GetBaseModFiles(string? version = null)
     {
-        if (!Directory.Exists(BaseModsPath))
-            return Array.Empty<string>();
+        var path = GetVersionedBaseModsPath(version);
 
-        try
-        {
-            return Directory.GetFiles(BaseModsPath, "*.zip", SearchOption.TopDirectoryOnly)
-                .Concat(Directory.GetFiles(BaseModsPath, "*.cs", SearchOption.TopDirectoryOnly))
-                .Select(Path.GetFileName)
-                .Where(f => f != null)
-                .Cast<string>()
-                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-        }
-        catch
-        {
-            return Array.Empty<string>();
-        }
+        if (!Directory.Exists(path))
+            return Enumerable.Empty<string>();
+
+        return Directory.GetFiles(path, "*.zip", SearchOption.TopDirectoryOnly)
+            .Concat(Directory.GetFiles(path, "*.cs", SearchOption.TopDirectoryOnly))
+            .Select(Path.GetFileName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))!;
     }
 
     /// <summary>
@@ -295,41 +324,54 @@ public sealed class InstanceService
     }
 
     /// <summary>
-    ///     Opens the base mods directory in the file explorer.
+    ///     Ensures the versioned base mods directory exists.
+    ///     Passing null or empty creates the unversioned root.
     /// </summary>
-    public void OpenBaseModsFolder()
+    public void EnsureVersionedBaseModsDirectoryExists(string? version = null)
     {
-        EnsureBaseModsDirectoryExists();
+        var path = GetVersionedBaseModsPath(version);
+        if (!Directory.Exists(path))
+            Directory.CreateDirectory(path);
+    }
+
+    /// <summary>
+    ///     Opens the base mods directory (or a versioned subfolder) in the file explorer.
+    /// </summary>
+    public void OpenBaseModsFolder(string? version = null)
+    {
+        var path = GetVersionedBaseModsPath(version);
+        Directory.CreateDirectory(path);
 
         try
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = BaseModsPath,
+                FileName = path,
                 UseShellExecute = true
             });
         }
         catch
         {
-            // Ignore errors opening folder
+            // Ignore
         }
     }
 
     /// <summary>
-    ///     Adds a mod file to the base mods directory.
+    ///     Adds a mod file to the base mods directory (or a versioned subfolder).
     /// </summary>
-    public bool AddModToBaseMods(string sourceFilePath)
+    public bool AddModToBaseMods(string sourceFilePath, string? version = null)
     {
-        if (!File.Exists(sourceFilePath))
+        if (string.IsNullOrWhiteSpace(sourceFilePath) || !File.Exists(sourceFilePath))
             return false;
 
         try
         {
-            EnsureBaseModsDirectoryExists();
+            var targetDir = GetVersionedBaseModsPath(version);
+            Directory.CreateDirectory(targetDir);
 
             var fileName = Path.GetFileName(sourceFilePath);
-            var destPath = Path.Combine(BaseModsPath, fileName);
-            File.Copy(sourceFilePath, destPath, overwrite: true);
+            var destPath = Path.Combine(targetDir, fileName);
+            File.Copy(sourceFilePath, destPath, overwrite: false);
             return true;
         }
         catch
@@ -339,19 +381,17 @@ public sealed class InstanceService
     }
 
     /// <summary>
-    ///     Removes a mod file from the base mods directory.
+    ///     Removes a mod file from the base mods directory (or a versioned subfolder).
     /// </summary>
-    public bool RemoveModFromBaseMods(string fileName)
+    public bool RemoveModFromBaseMods(string fileName, string? version = null)
     {
         try
         {
-            var filePath = Path.Combine(BaseModsPath, fileName);
-            if (File.Exists(filePath))
-            {
-                File.Delete(filePath);
-                return true;
-            }
-            return false;
+            var path = GetVersionedBaseModsPath(version);
+            var filePath = Path.Combine(path, fileName);
+            if (!File.Exists(filePath)) return false;
+            File.Delete(filePath);
+            return true;
         }
         catch
         {

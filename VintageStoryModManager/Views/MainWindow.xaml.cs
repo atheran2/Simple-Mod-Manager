@@ -2955,23 +2955,21 @@ public partial class MainWindow : Window
 
     private async Task CreateNewInstanceAsync()
     {
-        var dialog = new TextInputDialog("Create New Instance", "Instance name:", "My Instance");
-        dialog.Owner = this;
+        var dialog = new CreateInstanceDialog(this, _gameDirectory);
         if (dialog.ShowDialog() != true) return;
 
-        var instanceName = dialog.InputText;
-        if (string.IsNullOrWhiteSpace(instanceName))
-        {
-            WpfMessageBox.Show("Instance name cannot be empty.", "Simple VS Manager",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
+        var instanceName = dialog.InstanceName;
+        if (string.IsNullOrWhiteSpace(instanceName)) return;
 
         try
         {
             // Pass the current profile's data directory to copy player session from
             var sourceDataDirectory = _userConfiguration.DataDirectory;
-            var instance = _instanceService.CreateInstance(instanceName, sourceDataDirectory);
+            var instance = _instanceService.CreateInstance(
+                instanceName,
+                sourceDataDirectory,
+                targetVsVersion: dialog.TargetVsVersion,
+                gameDirectory: dialog.GameDirectory);
 
             // Switch to the new instance
             _instanceService.SetActiveInstance(instance.Id);
@@ -8654,23 +8652,21 @@ public partial class MainWindow : Window
 
     private async void CreateInstanceMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
-        var dialog = new TextInputDialog("Create New Instance", "Instance name:", "My Instance");
-        dialog.Owner = this;
+        var dialog = new CreateInstanceDialog(this, _gameDirectory);
         if (dialog.ShowDialog() != true) return;
 
-        var instanceName = dialog.InputText;
-        if (string.IsNullOrWhiteSpace(instanceName))
-        {
-            WpfMessageBox.Show("Instance name cannot be empty.", "Simple VS Manager",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
+        var instanceName = dialog.InstanceName;
+        if (string.IsNullOrWhiteSpace(instanceName)) return;
 
         try
         {
             // Pass the current profile's data directory to copy player session from
             var sourceDataDirectory = _userConfiguration.DataDirectory;
-            var instance = _instanceService.CreateInstance(instanceName, sourceDataDirectory);
+            var instance = _instanceService.CreateInstance(
+                instanceName,
+                sourceDataDirectory,
+                targetVsVersion: dialog.TargetVsVersion,
+                gameDirectory: dialog.GameDirectory);
 
             // Switch to the new instance
             _instanceService.SetActiveInstance(instance.Id);

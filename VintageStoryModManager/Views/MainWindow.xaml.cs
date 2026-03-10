@@ -4846,6 +4846,18 @@ public partial class MainWindow : Window
             MessageBoxImage.Warning);
     }
 
+    /// <summary>
+    /// Returns the effective game directory: active instance's override if set,
+    /// otherwise the global game directory.
+    /// </summary>
+    private string? GetEffectiveGameDirectory()
+    {
+        var activeInstance = _instanceService?.ActiveInstance;
+        if (activeInstance != null && !string.IsNullOrWhiteSpace(activeInstance.GameDirectory))
+            return activeInstance.GameDirectory;
+        return _gameDirectory;
+    }
+
     private async Task ReloadViewModelAsync()
     {
         if (string.IsNullOrWhiteSpace(_dataDirectory))
@@ -4871,7 +4883,7 @@ public partial class MainWindow : Window
             newViewModel = new MainViewModel(
                 _dataDirectory,
                 _userConfiguration,
-                _gameDirectory);
+                GetEffectiveGameDirectory());
             newViewModel.IsCompactView = _userConfiguration.IsCompactView;
             newViewModel.UseModDbDesignView = _userConfiguration.UseModDbDesignView;
             newViewModel.PropertyChanged += ViewModelOnPropertyChanged;

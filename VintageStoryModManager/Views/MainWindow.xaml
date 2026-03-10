@@ -357,10 +357,10 @@
                             Height="35"
                             Click="OpenConfigFolderButton_OnClick"
                             Header="Open _Config folder" />
-                        <MenuItem
+                        <!--<MenuItem
                             Height="35"
                             Click="OpenModlistsFolderButton_OnClick"
-                            Header="Open Modlists folder" />
+                            Header="Open Modlists folder" />-->
                         <MenuItem
                             Height="35"
                             Click="ManagerDataFolderMenuItem_OnClick"
@@ -372,14 +372,14 @@
                         Padding="6,0,6,0"
                         Header="_Save &amp; Load"
                         UseLayoutRounding="True">
-                        <MenuItem
+                        <!--<MenuItem
                             Height="35"
                             Click="SaveModlistMenuItem_OnClick"
                             Header="Save _Modlist..." />
                         <MenuItem
                             Height="35"
                             Click="LoadModlistMenuItem_OnClick"
-                            Header="Load _Modlist..." />
+                            Header="Load _Modlist..." />-->
                         <Separator />
                         <MenuItem
                             Height="35"
@@ -396,7 +396,7 @@
                                 Click="LoadPresetMenuItem_OnClick"
                                 Header="_Browse..." />
                         </MenuItem>
-                        <Separator />
+                        <!--<Separator />
                         <MenuItem
                             x:Name="AlwaysClearModlistsMenuItem"
                             Height="35"
@@ -410,7 +410,7 @@
                             Click="AlwaysAddModlistsMenuItem_OnClick"
                             Header="Always add to current mods when loading Modlist"
                             IsCheckable="True"
-                            Style="{StaticResource ToggleMenuItemStyle}" />
+                            Style="{StaticResource ToggleMenuItemStyle}" />-->
                     </MenuItem>
                     <MenuItem
                         x:Name="PerformanceMenuItem"
@@ -1409,7 +1409,7 @@
                     HorizontalContentAlignment="Stretch"
                     VerticalContentAlignment="Stretch"
                     BorderBrush="#00000000"
-                    Header="Modlists">
+                    Header="Shared Instances">
                     <Border
                         Margin="8,0,8,0"
                         Background="{DynamicResource Brush.MiddleTab.Background.Selected}"
@@ -1433,7 +1433,8 @@
                                     BorderBrush="#00000000"
                                     Header="Local"
                                     Style="{DynamicResource IMM.InnerModlistsTabItemStyle}"
-                                    UseLayoutRounding="True">
+                                    UseLayoutRounding="True"
+                                    Visibility="Collapsed">
                                     <Grid x:Name="LocalModlistsGrid">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="*" />
@@ -1719,7 +1720,8 @@
                                     Padding="10,4,10,4"
                                     Header="Online"
                                     Style="{DynamicResource IMM.InnerModlistsTabItemStyle}"
-                                    UseLayoutRounding="True">
+                                    UseLayoutRounding="True"
+                                    Visibility="Collapsed">
                                     <Grid x:Name="OnlineModlistsGrid">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="*" />
@@ -2022,7 +2024,6 @@
                                             GridLinesVisibility="None"
                                             HeadersVisibility="Column"
                                             HorizontalGridLinesBrush="Transparent"
-                                            IsEnabled="{Binding CanAccessCloudModlists}"
                                             IsReadOnly="True"
                                             ItemsSource="{Binding CloudInstancesView}"
                                             RowBackground="{DynamicResource Brush.Panel.Primary.Background.Solid}"
@@ -2163,8 +2164,7 @@
 
                                             <Grid
                                                 x:Name="SharedInstancesButtons"
-                                                Margin="0,0,0,8"
-                                                IsEnabled="{Binding CanAccessCloudModlists}">
+                                                Margin="0,0,0,8">
 
                                                 <Button
                                                     x:Name="RefreshCloudInstancesButton"
@@ -2989,7 +2989,7 @@
             d:IsHidden="True"
             Background="#C0000000"
             IsHitTestVisible="True"
-            Visibility="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=IsModlistInstallInProgress, Converter={StaticResource IMM.VisibleWhenTrueConverter}}">
+            Visibility="Collapsed">
             <Border
                 Width="497"
                 Height="260"

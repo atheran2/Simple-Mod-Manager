@@ -152,7 +152,7 @@ public sealed class UserConfigurationService
     private bool _hasPendingSave;
     private bool _isModUsageTrackingDisabled;
     private bool _isPersistenceEnabled;
-    private ModlistsTabSelection _preferredModlistsTab = ModlistsTabSelection.Local;
+
     private double? _modInfoPanelLeft;
     private double? _modInfoPanelTop;
     private ListSortDirection _modsSortDirection = ListSortDirection.Ascending;
@@ -291,7 +291,6 @@ public sealed class UserConfigurationService
 
     public string? CustomDataBackupLocation { get; private set; }
 
-    public bool SuppressModlistSavePrompt { get; private set; }
 
     public bool SuppressRefreshCachePrompt
     {
@@ -310,13 +309,6 @@ public sealed class UserConfigurationService
 
     public bool GameProfileCreationWarningAcknowledged { get; private set; }
 
-    public ModlistAutoLoadBehavior ModlistAutoLoadBehavior { get; private set; } = ModlistAutoLoadBehavior.Prompt;
-
-    public ModlistsTabSelection PreferredModlistsTab
-    {
-        get => _preferredModlistsTab;
-        private set => _preferredModlistsTab = value;
-    }
 
     public int ModDatabaseSearchResultLimit { get; private set; } = DefaultModDatabaseSearchResultLimit;
 
@@ -397,7 +389,6 @@ public sealed class UserConfigurationService
 
     public bool ClientSettingsCleanupCompleted { get; private set; }
 
-    public bool RebuiltModlistMigrationCompleted { get; private set; }
 
     public bool UseFasterThumbnails { get; private set; } = true;
 
@@ -1117,14 +1108,6 @@ public sealed class UserConfigurationService
         Save();
     }
 
-    public void SetRebuiltModlistMigrationCompleted()
-    {
-        if (RebuiltModlistMigrationCompleted) return;
-
-        RebuiltModlistMigrationCompleted = true;
-        Save();
-    }
-
     public IReadOnlyDictionary<string, string> GetThemePaletteColors()
     {
         return new Dictionary<string, string>(_themePaletteColors, StringComparer.OrdinalIgnoreCase);
@@ -1772,22 +1755,6 @@ public sealed class UserConfigurationService
         Save();
     }
 
-    public void SetModlistAutoLoadBehavior(ModlistAutoLoadBehavior behavior)
-    {
-        if (ModlistAutoLoadBehavior == behavior) return;
-
-        ModlistAutoLoadBehavior = behavior;
-        Save();
-    }
-
-    public void SetPreferredModlistsTab(ModlistsTabSelection selection)
-    {
-        if (PreferredModlistsTab == selection) return;
-
-        PreferredModlistsTab = selection;
-        Save();
-    }
-
     public void SetCacheAllVersionsLocally(bool cacheAllVersionsLocally)
     {
         if (CacheAllVersionsLocally == cacheAllVersionsLocally) return;
@@ -2069,14 +2036,6 @@ public sealed class UserConfigurationService
         Save();
     }
 
-    public void SetSuppressModlistSavePrompt(bool suppress)
-    {
-        if (SuppressModlistSavePrompt == suppress) return;
-
-        SuppressModlistSavePrompt = suppress;
-        Save();
-    }
-
     public void SetSuppressRefreshCachePrompt(bool suppress)
     {
         var normalizedVersion = suppress
@@ -2253,7 +2212,7 @@ public sealed class UserConfigurationService
             AutomaticDataBackupsWarningAcknowledged =
                 obj["automaticDataBackupsWarningAcknowledged"]?.GetValue<bool?>() ?? false;
             CustomDataBackupLocation = NormalizePath(GetOptionalString(obj["customDataBackupLocation"]));
-            SuppressModlistSavePrompt = obj["suppressModlistSavePrompt"]?.GetValue<bool?>() ?? false;
+
             _suppressRefreshCachePrompt = obj["suppressRefreshCachePrompt"]?.GetValue<bool?>() ?? false;
             _suppressRefreshCachePromptVersion = NormalizeVersion(
                 GetOptionalString(obj["suppressRefreshCachePromptVersion"]));
@@ -2294,8 +2253,7 @@ public sealed class UserConfigurationService
 
             var hasCustomPalette = LoadCustomThemePalette(obj["customThemePalette"]);
             ResetThemePaletteToDefaults();
-            ModlistAutoLoadBehavior = ParseModlistAutoLoadBehavior(GetOptionalString(obj["modlistAutoLoadBehavior"]));
-            PreferredModlistsTab = ParseModlistsTabSelection(GetOptionalString(obj["preferredModlistsTab"]));
+
             _modsSortMemberPath = NormalizeSortMemberPath(GetOptionalString(obj["modsSortMemberPath"]));
             _modsSortDirection = ParseSortDirection(GetOptionalString(obj["modsSortDirection"]));
             ModDatabaseSearchResultLimit =
@@ -2336,8 +2294,7 @@ public sealed class UserConfigurationService
             MigrationCheckCompleted = obj["migrationCheckCompleted"]?.GetValue<bool?>() ?? false;
             FirebaseAuthBackupCreated = obj["firebaseAuthBackupCreated"]?.GetValue<bool?>() ?? false;
             ClientSettingsCleanupCompleted = obj["clientSettingsCleanupCompleted"]?.GetValue<bool?>() ?? false;
-            RebuiltModlistMigrationCompleted =
-                obj["rebuiltModlistMigrationCompleted"]?.GetValue<bool?>() ?? false;
+
             // Migration: Invert old useCorrectThumbnails value if present, otherwise default to true (faster)
             UseFasterThumbnails = obj["useFasterThumbnails"]?.GetValue<bool?>() ??
                                   !(obj["useCorrectThumbnails"]?.GetValue<bool?>() ?? false);
@@ -2439,11 +2396,10 @@ public sealed class UserConfigurationService
             LogModDeletions = false;
             AutomaticDataBackupsWarningAcknowledged = false;
             CustomDataBackupLocation = null;
-            SuppressModlistSavePrompt = false;
+
             _suppressRefreshCachePrompt = false;
             _suppressRefreshCachePromptVersion = null;
-            ModlistAutoLoadBehavior = ModlistAutoLoadBehavior.Prompt;
-            PreferredModlistsTab = ModlistsTabSelection.Local;
+
             _modsSortMemberPath = null;
             _modsSortDirection = ListSortDirection.Ascending;
             _selectedPresetName = null;
@@ -2475,7 +2431,7 @@ public sealed class UserConfigurationService
             FirebaseAuthBackupCreated = false;
             GameProfileCreationWarningAcknowledged = false;
             ClientSettingsCleanupCompleted = false;
-            RebuiltModlistMigrationCompleted = false;
+
             UseFasterThumbnails = true;
         }
 
@@ -2522,15 +2478,14 @@ public sealed class UserConfigurationService
                 ["automaticDataBackupsEnabled"] = AutomaticDataBackupsEnabled,
                 ["automaticDataBackupsWarningAcknowledged"] = AutomaticDataBackupsWarningAcknowledged,
                 ["customDataBackupLocation"] = CustomDataBackupLocation,
-                ["suppressModlistSavePrompt"] = SuppressModlistSavePrompt,
+
                 ["suppressRefreshCachePrompt"] = _suppressRefreshCachePrompt,
                 ["suppressRefreshCachePromptVersion"] = _suppressRefreshCachePromptVersion,
                 ["gameProfileCreationWarningAcknowledged"] = GameProfileCreationWarningAcknowledged,
                 ["useDarkVsMode"] = ColorTheme != ColorTheme.Light,
                 ["colorTheme"] = ColorTheme.ToString(),
                 ["currentThemeName"] = _currentThemeName,
-                ["modlistAutoLoadBehavior"] = ModlistAutoLoadBehavior.ToString(),
-                ["preferredModlistsTab"] = PreferredModlistsTab.ToString(),
+
                 ["modsSortMemberPath"] = _modsSortMemberPath,
                 ["modsSortDirection"] = _modsSortDirection.ToString(),
                 ["modDatabaseSearchResultLimit"] = ModDatabaseSearchResultLimit,
@@ -2568,7 +2523,7 @@ public sealed class UserConfigurationService
                 ["migrationCheckCompleted"] = MigrationCheckCompleted,
                 ["firebaseAuthBackupCreated"] = FirebaseAuthBackupCreated,
                 ["clientSettingsCleanupCompleted"] = ClientSettingsCleanupCompleted,
-                ["rebuiltModlistMigrationCompleted"] = RebuiltModlistMigrationCompleted,
+
                 ["useFasterThumbnails"] = UseFasterThumbnails,
                 ["disableHoverEffects"] = DisableHoverEffects,
                 ["isGroupedByCategory"] = _isGroupedByCategory,
@@ -2658,20 +2613,6 @@ public sealed class UserConfigurationService
         if (normalized <= 0) return DefaultModDatabaseNewModsRecentMonths;
 
         return Math.Clamp(normalized, 1, MaxModDatabaseNewModsRecentMonths);
-    }
-
-    private static ModlistAutoLoadBehavior ParseModlistAutoLoadBehavior(string? value)
-    {
-        if (Enum.TryParse(value, true, out ModlistAutoLoadBehavior behavior)) return behavior;
-
-        return ModlistAutoLoadBehavior.Prompt;
-    }
-
-    private static ModlistsTabSelection ParseModlistsTabSelection(string? value)
-    {
-        if (Enum.TryParse(value, true, out ModlistsTabSelection selection)) return selection;
-
-        return ModlistsTabSelection.Local;
     }
 
     private static ModDatabaseAutoLoadMode ParseModDatabaseAutoLoadMode(string? value)

@@ -1,9 +1,5 @@
 using CommunityToolkit.Mvvm.Input;
 using ModernWpf.Controls;
-using QuestPDF;
-using QuestPDF.Fluent;
-using QuestPDF.Helpers;
-using QuestPDF.Infrastructure;
 using SimpleVsManager.Cloud;
 using System.Collections.Generic;
 using System.Collections.Specialized;
@@ -31,7 +27,6 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Navigation;
 using System.Windows.Threading;
-using UglyToad.PdfPig;
 using VintageStoryModManager.Models;
 using VintageStoryModManager.Services;
 using VintageStoryModManager.Helpers;
@@ -40,7 +35,7 @@ using VintageStoryModManager.Views.Dialogs;
 using YamlDotNet.Core;
 using ButtonBase = System.Windows.Controls.Primitives.ButtonBase;
 using ModUserReportChangedEventArgs = VintageStoryModManager.ViewModels.MainViewModel.ModUserReportChangedEventArgs;
-using Colors = QuestPDF.Helpers.Colors;
+
 using ComboBox = System.Windows.Controls.ComboBox;
 using Cursors = System.Windows.Input.Cursors;
 using DataFolderBackupProgress = VintageStoryModManager.Services.DataBackupProgress;
@@ -217,41 +212,6 @@ public partial class MainWindow : Window
             typeof(MainWindow),
             new PropertyMetadata(string.Empty));
 
-    public static readonly DependencyProperty IsModlistInstallInProgressProperty =
-        DependencyProperty.Register(
-            nameof(IsModlistInstallInProgress),
-            typeof(bool),
-            typeof(MainWindow),
-            new PropertyMetadata(false));
-
-    public static readonly DependencyProperty ModlistInstallProgressProperty =
-        DependencyProperty.Register(
-            nameof(ModlistInstallProgress),
-            typeof(double),
-            typeof(MainWindow),
-            new PropertyMetadata(0d));
-
-    public static readonly DependencyProperty ModlistInstallStatusMessageProperty =
-        DependencyProperty.Register(
-            nameof(ModlistInstallStatusMessage),
-            typeof(string),
-            typeof(MainWindow),
-            new PropertyMetadata(string.Empty));
-
-    public static readonly DependencyProperty ModlistDownloadSpeedProperty =
-        DependencyProperty.Register(
-            nameof(ModlistDownloadSpeed),
-            typeof(string),
-            typeof(MainWindow),
-            new PropertyMetadata(string.Empty));
-
-    public static readonly DependencyProperty HasModlistDownloadSpeedProperty =
-        DependencyProperty.Register(
-            nameof(HasModlistDownloadSpeed),
-            typeof(bool),
-            typeof(MainWindow),
-            new PropertyMetadata(false));
-
     public bool IsDataBackupInProgress
     {
         get => (bool)GetValue(IsDataBackupInProgressProperty);
@@ -268,36 +228,6 @@ public partial class MainWindow : Window
     {
         get => (string)GetValue(DataBackupStatusMessageProperty);
         set => SetValue(DataBackupStatusMessageProperty, value);
-    }
-
-    public bool IsModlistInstallInProgress
-    {
-        get => (bool)GetValue(IsModlistInstallInProgressProperty);
-        set => SetValue(IsModlistInstallInProgressProperty, value);
-    }
-
-    public double ModlistInstallProgress
-    {
-        get => (double)GetValue(ModlistInstallProgressProperty);
-        set => SetValue(ModlistInstallProgressProperty, value);
-    }
-
-    public string ModlistInstallStatusMessage
-    {
-        get => (string)GetValue(ModlistInstallStatusMessageProperty);
-        set => SetValue(ModlistInstallStatusMessageProperty, value);
-    }
-
-    public string ModlistDownloadSpeed
-    {
-        get => (string)GetValue(ModlistDownloadSpeedProperty);
-        set => SetValue(ModlistDownloadSpeedProperty, value);
-    }
-
-    public bool HasModlistDownloadSpeed
-    {
-        get => (bool)GetValue(HasModlistDownloadSpeedProperty);
-        set => SetValue(HasModlistDownloadSpeedProperty, value);
     }
 
     #endregion
@@ -328,17 +258,13 @@ public partial class MainWindow : Window
     // Selection tracking
     private readonly Dictionary<ModListItemViewModel, PropertyChangedEventHandler> _selectedModPropertyHandlers = new();
     private readonly List<ModListItemViewModel> _selectedMods = new();
-    private readonly List<LocalModlistListEntry> _selectedLocalModlists = new();
-    private CloudModlistListEntry? _selectedCloudModlist;
     private CloudInstanceListEntryViewModel? _selectedCloudInstance;
     private ModListItemViewModel? _selectionAnchor;
 
     // Cloud/Firebase state
-    private bool _cloudModlistsLoaded;
     private bool _cloudInstancesLoaded;
     private bool _isCloudInstanceRefreshInProgress;
     private bool _firebaseMigrationAttempted;
-    private FirebaseModlistStore? _cloudModlistStore;
     private FirebaseInstanceStore? _cloudInstanceStore;
 
     // View state
@@ -363,29 +289,22 @@ public partial class MainWindow : Window
     private bool _isApplyingMultiToggle;
     private bool _isApplyingPreset;
     private bool _isAutomaticRefreshRunning;
-    private bool _isCloudModlistRefreshInProgress;
     private bool _isDependencyResolutionRefreshPending;
     private bool _isDraggingModInfoPanel;
     private bool _isInitializing;
-    private bool _isUpdatingModlistsTabSelection;
     private bool _isUpdatingMiddleTabSelection;
     private bool _isModUpdateInProgress;
     private bool _isModUsageDialogOpen;
-    private bool _isRefreshingAfterModlistLoad;
     private bool _isWindowActive;
-    private bool _refreshAfterModlistLoadPending;
-    private bool _localModlistsLoaded;
     private bool _suppressSortPreferenceSave;
     private bool _isModBrowserWatcherSubscribed;
 
     // Drag state
     private Point _modInfoDragOffset;
 
-    // Modlist installation state
+    // Preset/backup state
     private string? _recentLocalModBackupDirectory;
     private List<string>? _recentLocalModBackupModNames;
-    private int _modlistInstallCompletedSteps;
-    private int _modlistInstallTotalSteps;
 
     // ViewModel
     private MainViewModel? _viewModel;
@@ -418,8 +337,6 @@ public partial class MainWindow : Window
         DeveloperProfileManager.CurrentProfileChanged += DeveloperProfileManager_OnCurrentProfileChanged;
 
         RootGrid.SizeChanged += RootGrid_OnSizeChanged;
-
-        UpdateModlistLoadingUiState();
 
         InitializeColumnVisibilityMenu();
 
@@ -455,8 +372,6 @@ public partial class MainWindow : Window
             }
         }
 
-        UpdateModlistAutoLoadMenu(_userConfiguration.ModlistAutoLoadBehavior);
-
         TryInitializePaths();
 
         // If an instance was active last session, use its path instead of the profile path
@@ -489,8 +404,8 @@ public partial class MainWindow : Window
         Closing += MainWindow_OnClosing;
         InternetAccessManager.InternetAccessChanged += InternetAccessManager_OnInternetAccessChanged;
 
-        UpdateCloudModlistControlsEnabledState();
-        UpdateLocalModlistControlsEnabledState();
+        // UpdateCloudModlistControlsEnabledState(); // removed: CloudModlistListEntry types removed
+        // UpdateLocalModlistControlsEnabledState(); // removed: LocalModlistListEntry types removed
     }
 
     #endregion
@@ -595,12 +510,10 @@ public partial class MainWindow : Window
 
         _userConfiguration.EnablePersistence();
 
-        MigrateLegacyRebuiltModlistsIfNeeded();
-
         // Ensure firebase-auth.json is backed up if it exists and hasn't been backed up yet
         FirebaseAnonymousAuthenticator.EnsureStartupBackup(_userConfiguration);
 
-        await MigrateLegacyFirebaseDataIfNeededAsync().ConfigureAwait(true);
+        // await MigrateLegacyFirebaseDataIfNeededAsync().ConfigureAwait(true); // removed: FirebaseModlistStore types removed
 
         await CheckAndPromptMigrationAsync().ConfigureAwait(true);
 
@@ -618,54 +531,6 @@ public partial class MainWindow : Window
 
         await RefreshDeleteCachedModsMenuHeaderAsync();
         await RefreshManagerUpdateLinkAsync();
-    }
-
-    private void MigrateLegacyRebuiltModlistsIfNeeded()
-    {
-        if (_userConfiguration.RebuiltModlistMigrationCompleted) return;
-
-        try
-        {
-            var modListDirectory = EnsureModListDirectory();
-            var rebuiltDirectory = Path.Combine(modListDirectory, RebuiltModListDirectoryName);
-            Directory.CreateDirectory(rebuiltDirectory);
-
-            var movedAny = false;
-            foreach (var entry in Directory.EnumerateFileSystemEntries(
-                         modListDirectory,
-                         "Rebuilt_*",
-                         SearchOption.TopDirectoryOnly))
-            {
-                if (Directory.Exists(entry))
-                {
-                    var targetPath = Path.Combine(rebuiltDirectory, Path.GetFileName(entry));
-                    targetPath = EnsureUniqueDirectoryPath(targetPath);
-                    Directory.Move(entry, targetPath);
-                    movedAny = true;
-                }
-                else if (File.Exists(entry))
-                {
-                    var targetPath = Path.Combine(rebuiltDirectory, Path.GetFileName(entry));
-                    targetPath = EnsureUniqueFilePath(targetPath);
-                    File.Move(entry, targetPath);
-                    movedAny = true;
-                }
-            }
-
-            if (movedAny)
-                _viewModel?.ReportStatus($"Moved rebuilt modlists into \"{RebuiltModListDirectoryName}\" folder.");
-
-            _userConfiguration.SetRebuiltModlistMigrationCompleted();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PathTooLongException)
-        {
-            _modActivityLoggingService.LogError("Failed to prepare the Rebuilt modlists folder", ex);
-            WpfMessageBox.Show(
-                $"Failed to prepare the Rebuilt modlists folder:\n{ex.Message}",
-                "Simple VS Manager",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
-        }
     }
 
     private async Task PromptCacheRefreshIfNeededAsync()
@@ -1722,46 +1587,6 @@ public partial class MainWindow : Window
 
     }
 
-    private void AlwaysClearModlistsMenuItem_OnClick(object sender, RoutedEventArgs e)
-    {
-        HandleModlistAutoLoadMenuClick(
-            sender,
-            ModlistAutoLoadBehavior.Replace,
-            ModlistAutoLoadBehavior.Prompt);
-    }
-
-    private void AlwaysAddModlistsMenuItem_OnClick(object sender, RoutedEventArgs e)
-    {
-        HandleModlistAutoLoadMenuClick(
-            sender,
-            ModlistAutoLoadBehavior.Add,
-            ModlistAutoLoadBehavior.Prompt);
-    }
-
-    private void HandleModlistAutoLoadMenuClick(object sender, ModlistAutoLoadBehavior enabledBehavior,
-        ModlistAutoLoadBehavior disabledBehavior)
-    {
-        if (sender is not MenuItem menuItem) return;
-
-        var newBehavior = menuItem.IsChecked ? enabledBehavior : disabledBehavior;
-        SetModlistAutoLoadBehavior(newBehavior);
-    }
-
-    private void SetModlistAutoLoadBehavior(ModlistAutoLoadBehavior behavior)
-    {
-        UpdateModlistAutoLoadMenu(behavior);
-        _userConfiguration.SetModlistAutoLoadBehavior(behavior);
-    }
-
-    private void UpdateModlistAutoLoadMenu(ModlistAutoLoadBehavior behavior)
-    {
-        if (AlwaysClearModlistsMenuItem is not null)
-            AlwaysClearModlistsMenuItem.IsChecked = behavior == ModlistAutoLoadBehavior.Replace;
-
-        if (AlwaysAddModlistsMenuItem is not null)
-            AlwaysAddModlistsMenuItem.IsChecked = behavior == ModlistAutoLoadBehavior.Add;
-    }
-
     private void UpdateGameVersionMenuItem(string? gameVersion)
     {
         if (GameVersionMenuItem is null) return;
@@ -1841,8 +1666,6 @@ public partial class MainWindow : Window
         var suffixSource = _viewModel?.PlayerUid;
         if (string.IsNullOrWhiteSpace(suffixSource)) suffixSource = fallbackUserId;
 
-        if (string.IsNullOrWhiteSpace(suffixSource)) suffixSource = _cloudModlistStore?.CurrentUserId;
-
         if (!string.IsNullOrWhiteSpace(suffixSource))
         {
             var trimmedSpan = suffixSource.AsSpan().Trim();
@@ -1864,22 +1687,13 @@ public partial class MainWindow : Window
     private void ApplyPlayerIdentityToUiAndCloudStore()
     {
         SetUsernameDisplay(ResolveUploaderName());
-
-        if (_cloudModlistStore is not null) ApplyPlayerIdentityToCloudStore(_cloudModlistStore);
-    }
-
-    private void ApplyPlayerIdentityToCloudStore(FirebaseModlistStore? store)
-    {
-        if (store is null) return;
-
-        store.SetPlayerIdentity(_viewModel?.PlayerUid, _viewModel?.PlayerName);
     }
 
     private void SaveUploaderName()
     {
         if (_userConfiguration is null) return;
 
-        var uploader = ResolveUploaderName(_cloudModlistStore?.CurrentUserId);
+        var uploader = ResolveUploaderName();
         SetUsernameDisplay(uploader);
     }
 
@@ -2745,9 +2559,9 @@ public partial class MainWindow : Window
         _viewModel.UserReportVoteSubmitted += OnUserReportVoteSubmitted;
         DataContext = _viewModel;
         ApplyPlayerIdentityToUiAndCloudStore();
-        _cloudModlistsLoaded = false;
-        _localModlistsLoaded = false;
-        _selectedCloudModlist = null; ;
+        // _cloudModlistsLoaded = false; // removed: FirebaseModlistStore types removed
+        // _localModlistsLoaded = false; // removed: LocalModlistListEntry types removed
+        // _selectedCloudModlist = null; // removed: CloudModlistListEntry types removed
         AttachToModsView(_viewModel.CurrentModsView);
         RestoreSortPreference();
         UpdateGameVersionMenuItem(_viewModel.InstalledGameVersion);
@@ -2978,7 +2792,7 @@ public partial class MainWindow : Window
             _userConfiguration.SetActiveInstance(instance, () => _instanceService.SaveInstance(instance));
 
             _dataDirectory = instance.Path;
-            _cloudModlistStore = null;
+            // _cloudModlistStore = null; // removed: FirebaseModlistStore types removed
             await ReloadViewModelAsync();
 
             // Sync installed mods to ModBrowser (will be empty for new instance)
@@ -3450,18 +3264,6 @@ public partial class MainWindow : Window
         {
             if (_viewModel != null) _userConfiguration.SetModDbDesignViewMode(_viewModel.UseModDbDesignView);
         }
-        else if (e.PropertyName == nameof(MainViewModel.IsViewingModlistTab))
-        {
-            if (_viewModel != null)
-                Dispatcher.InvokeAsync(() =>
-                {
-                    if (_viewModel != null)
-                    {
-                        HandleModlistsVisibilityChanged(_viewModel.IsViewingModlistTab);
-                        SyncMiddleTabControlToViewModel();
-                    }
-                }, DispatcherPriority.Background);
-        }
         else if (e.PropertyName == nameof(MainViewModel.IsViewingMainTab))
         {
             if (_viewModel != null)
@@ -3489,7 +3291,6 @@ public partial class MainWindow : Window
             Dispatcher.InvokeAsync(() =>
             {
                 RefreshHoverOverlayState();
-                ScheduleRefreshAfterModlistLoadIfReady();
             }, DispatcherPriority.Background);
         }
         else if (e.PropertyName == nameof(MainViewModel.IsLoadingModDetails))
@@ -3497,7 +3298,6 @@ public partial class MainWindow : Window
             Dispatcher.InvokeAsync(() =>
             {
                 RefreshHoverOverlayState();
-                ScheduleRefreshAfterModlistLoadIfReady();
             }, DispatcherPriority.Background);
         }
         else if (e.PropertyName == nameof(MainViewModel.StatusMessage))
@@ -3507,38 +3307,12 @@ public partial class MainWindow : Window
                 Dispatcher.InvokeAsync(
                     async () => { await RefreshModsAfterDependencyResolutionAsync().ConfigureAwait(true); },
                     DispatcherPriority.Background);
-
-            Dispatcher.InvokeAsync(ScheduleRefreshAfterModlistLoadIfReady, DispatcherPriority.Background);
         }
     }
 
     private void UpdateSearchColumnVisibility(bool isSearchingModDatabase)
     {
         UpdateSearchSortingBehavior(isSearchingModDatabase);
-    }
-
-    private void HandleModlistsVisibilityChanged(bool isVisible)
-    {
-        if (isVisible)
-        {
-            ApplyPreferredModlistsTabSelection();
-            RefreshLocalModlists(false);
-
-            // When opening modlists tab with Online sub-tab already selected, ensure cloud modlists load
-            if (ModlistsTabControl is not null &&
-                OnlineModlistsTabItem is not null &&
-                Equals(ModlistsTabControl.SelectedItem, OnlineModlistsTabItem))
-            {
-                _ = RefreshCloudModlistsAsync(!_cloudModlistsLoaded);
-            }
-
-            return;
-        }
-
-        SetLocalModlistSelection(Array.Empty<LocalModlistListEntry>());
-        if (LocalModlistsDataGrid is not null) LocalModlistsDataGrid.SelectedItems.Clear();
-        SetCloudModlistSelection(null);
-        if (CloudModlistsDataGrid != null) CloudModlistsDataGrid.SelectedItem = null;
     }
 
     private async void MiddleTabControl_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -3591,8 +3365,8 @@ public partial class MainWindow : Window
         }
         else if (Equals(tabControl.SelectedItem, ModlistTab))
         {
-            if (_viewModel.ShowModlistTabCommand?.CanExecute(null) == true)
-                _viewModel.ShowModlistTabCommand.Execute(null);
+            if (!_cloudInstancesLoaded)
+                await RefreshCloudInstancesAsync(false);
         }
     }
 
@@ -3620,8 +3394,6 @@ public partial class MainWindow : Window
 
         if (_viewModel.IsViewingMainTab)
             targetTab = MainTab;
-        else if (_viewModel.IsViewingModlistTab)
-            targetTab = ModlistTab;
         else if (_viewModel.SearchModDatabase)
             targetTab = DatabaseTab;
         else
@@ -3640,72 +3412,10 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ModlistsTabControl_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_isUpdatingModlistsTabSelection) return;
-        if (_viewModel?.IsViewingModlistTab != true) return;
-        if (sender is not TabControl tabControl) return;
-        if (OnlineModlistsTabItem is null || LocalModlistsTabItem is null) return;
-
-        if (Equals(tabControl.SelectedItem, LocalModlistsTabItem))
-        {
-            _userConfiguration.SetPreferredModlistsTab(ModlistsTabSelection.Local);
-            return;
-        }
-
-        // Handle Shared Instances tab
-        if (Equals(tabControl.SelectedItem, SharedInstancesTabItem))
-        {
-            _ = RefreshCloudInstancesAsync(!_cloudInstancesLoaded);
-            return;
-        }
-
-        if (!Equals(tabControl.SelectedItem, OnlineModlistsTabItem)) return;
-
-        if (HasFirebaseAuthStateFile()) EnsureFirebaseAuthBackedUpIfAvailable();
-
-        if (!EnsureCloudModlistsConsent())
-        {
-            _isUpdatingModlistsTabSelection = true;
-            try
-            {
-                tabControl.SelectedItem = LocalModlistsTabItem;
-            }
-            finally
-            {
-                _isUpdatingModlistsTabSelection = false;
-            }
-
-            _userConfiguration.SetPreferredModlistsTab(ModlistsTabSelection.Local);
-            return;
-        }
-
-        _userConfiguration.SetPreferredModlistsTab(ModlistsTabSelection.Online);
-        _ = RefreshCloudModlistsAsync(!_cloudModlistsLoaded);
-    }
-
-    private void ModlistsTabControl_OnLoaded(object sender, RoutedEventArgs e)
-    {
-        ApplyPreferredModlistsTabSelection();
-    }
-
-    private void ApplyPreferredModlistsTabSelection()
-    {
-        if (ModlistsTabControl is null || LocalModlistsTabItem is null || OnlineModlistsTabItem is null) return;
-
-        var preferredTab = _userConfiguration.PreferredModlistsTab;
-        var preferredItem = preferredTab == ModlistsTabSelection.Online
-            ? OnlineModlistsTabItem
-            : LocalModlistsTabItem;
-
-        if (!Equals(ModlistsTabControl.SelectedItem, preferredItem)) ModlistsTabControl.SelectedItem = preferredItem;
-    }
-
     private void InternetAccessManager_OnInternetAccessChanged(object? sender, EventArgs e)
     {
         void Update()
         {
-            UpdateCloudModlistControlsEnabledState();
             _ = RefreshManagerUpdateLinkAsync();
         }
 
@@ -3871,39 +3581,6 @@ public partial class MainWindow : Window
         {
             _isDependencyResolutionRefreshPending = false;
         }
-    }
-
-    private void ScheduleRefreshAfterModlistLoadIfReady()
-    {
-        if (!_refreshAfterModlistLoadPending || _isRefreshingAfterModlistLoad) return;
-
-        var viewModel = _viewModel;
-        if (viewModel?.RefreshCommand == null) return;
-
-        if (viewModel.IsLoadingMods || viewModel.IsLoadingModDetails) return;
-
-        _isRefreshingAfterModlistLoad = true;
-
-        Dispatcher.InvokeAsync(async () =>
-        {
-            try
-            {
-                await RefreshModsAsync(true).ConfigureAwait(true);
-            }
-            catch (Exception ex)
-            {
-                WpfMessageBox.Show(
-                    $"Failed to refresh mods after loading the modlist:{Environment.NewLine}{ex.Message}",
-                    "Simple VS Manager",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
-            }
-            finally
-            {
-                _refreshAfterModlistLoadPending = false;
-                _isRefreshingAfterModlistLoad = false;
-            }
-        }, DispatcherPriority.Background);
     }
 
     private void RestoreSortPreference()
@@ -6840,192 +6517,6 @@ public partial class MainWindow : Window
         await RefreshDeleteCachedModsMenuHeaderAsync();
     }
 
-    private void SaveInstalledModsPdfMenuItem_OnClick(object sender, RoutedEventArgs e)
-    {
-        if (_viewModel is null)
-        {
-            WpfMessageBox.Show(
-                "Mods are still loading. Please try again once loading is complete.",
-                "Simple VS Manager",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-            return;
-        }
-
-        var mods = _viewModel.GetInstalledModsSnapshot();
-        if (mods.Count == 0)
-        {
-            WpfMessageBox.Show(
-                "No installed mods were found to include in the PDF.",
-                "Simple VS Manager",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-            return;
-        }
-
-        var configOptions = BuildModConfigOptions();
-
-        var metadataDialog = new SaveInstalledModsDialog(
-            BuildCloudModlistName(),
-            configOptions,
-            GetUploaderNameForPdf(),
-            defaultVersion: null,
-            defaultGameVersion: _viewModel?.InstalledGameVersion,
-            SaveInstalledModsDialogResult.SavePdf)
-        {
-            Owner = this
-        };
-
-        var metadataResult = metadataDialog.ShowDialog();
-        if (metadataResult != true) return;
-
-        var listName = metadataDialog.ListName;
-        var version = metadataDialog.Version;
-        var description = metadataDialog.Description;
-        var uploaderName = metadataDialog.CreatedBy;
-        if (string.IsNullOrWhiteSpace(uploaderName)) uploaderName = GetUploaderNameForPdf();
-        else uploaderName = uploaderName!.Trim();
-        var gameVersion = ResolveGameVersion(metadataDialog.VintageStoryVersion);
-
-        var selectedConfigOptions = metadataDialog.GetSelectedConfigOptions();
-        var includedConfigurations = TryReadModConfigurations(selectedConfigOptions);
-
-        TrySaveInstalledModsPdf(
-            listName,
-            version,
-            description,
-            uploaderName,
-            includedConfigurations,
-            gameVersion,
-            mods);
-    }
-
-    private bool TrySaveInstalledModsPdf(
-        string listName,
-        string? version,
-        string? description,
-        string uploaderName,
-        IReadOnlyDictionary<string, IReadOnlyList<ModConfigurationSnapshot>>? includedConfigurations,
-        string? gameVersion,
-        IReadOnlyList<ModListItemViewModel>? preFetchedMods = null)
-    {
-        if (_viewModel is null)
-        {
-            WpfMessageBox.Show(
-                "Mods are still loading. Please try again once loading is complete.",
-                "Simple VS Manager",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-            return false;
-        }
-
-        var mods = preFetchedMods ?? _viewModel.GetInstalledModsSnapshot();
-        if (mods.Count == 0)
-        {
-            WpfMessageBox.Show(
-                "No installed mods were found to include in the PDF.",
-                "Simple VS Manager",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-            return false;
-        }
-
-        string filePath;
-        try
-        {
-            var modListDirectory = EnsureModListDirectory();
-            var entryName = BuildSuggestedFileName(listName, "Modlist");
-            filePath = Path.Combine(modListDirectory, entryName + ".pdf");
-
-            if (File.Exists(filePath))
-            {
-                var message =
-                    $"A modlist PDF named \"{Path.GetFileName(filePath)}\" already exists in the Modlists folder. Do you want to replace it?";
-                var confirmation = WpfMessageBox.Show(
-                    this,
-                    message,
-                    "Replace Modlist PDF",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
-
-                if (confirmation != MessageBoxResult.Yes) return false;
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException
-                                       or PathTooLongException or SecurityException)
-        {
-            WpfMessageBox.Show($"Failed to prepare the Modlists folder:\n{ex.Message}",
-                "Simple VS Manager",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-            return false;
-        }
-
-        var presetName = string.IsNullOrWhiteSpace(listName)
-            ? "Installed Mods"
-            : listName.Trim();
-        var resolvedGameVersion = ResolveGameVersion(gameVersion);
-        var serializable = BuildSerializablePreset(
-            presetName,
-            true,
-            true,
-            includedConfigurations,
-            resolvedGameVersion);
-
-        serializable.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
-        serializable.Version = string.IsNullOrWhiteSpace(version) ? null : version.Trim();
-        serializable.Uploader = string.IsNullOrWhiteSpace(uploaderName) ? null : uploaderName.Trim();
-        if (!string.IsNullOrWhiteSpace(listName)) serializable.Name = listName.Trim();
-
-        var serializableConfigList = BuildSerializableConfigList(includedConfigurations);
-
-        var normalizedUploader = string.IsNullOrWhiteSpace(uploaderName)
-            ? GetUploaderNameForPdf()
-            : uploaderName.Trim();
-
-        try
-        {
-            GenerateInstalledModsPdf(
-                filePath,
-                listName,
-                version,
-                description,
-                normalizedUploader,
-                resolvedGameVersion,
-                mods,
-                serializable,
-                serializableConfigList);
-
-            _viewModel.ReportStatus($"Saved installed mods PDF to \"{filePath}\".");
-
-            WpfMessageBox.Show(
-                "Saved installed mods PDF successfully.",
-                "Simple VS Manager",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException
-                                       or PathTooLongException)
-        {
-            WpfMessageBox.Show(
-                $"Failed to save the PDF:\n{ex.Message}",
-                "Simple VS Manager",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-        }
-        catch (Exception ex)
-        {
-            WpfMessageBox.Show(
-                $"Failed to generate the PDF:\n{ex.Message}",
-                "Simple VS Manager",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-        }
-
-        return false;
-    }
 
     private void ManagerDataFolderMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
@@ -7668,6 +7159,7 @@ public partial class MainWindow : Window
         return rounded.ToString("+0.##;-0.##;0", CultureInfo.CurrentCulture);
     }
 
+#if false
     private async void DeleteCloudAuthMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
         const string confirmationMessage =
@@ -7686,6 +7178,7 @@ public partial class MainWindow : Window
             store => DeleteAllCloudModlistsAndAuthorizationAsync(store),
             "delete all cloud modlists and Firebase authorization");
     }
+#endif
 
     private static string ResolveExperimentalCompReviewIdentifier(ModListItemViewModel selectedMod)
     {
@@ -7942,9 +7435,9 @@ public partial class MainWindow : Window
 
         if (confirmation != MessageBoxResult.OK) return;
 
-        await ExecuteCloudOperationAsync(
-            store => DeleteAllCloudModlistsAndAuthorizationAsync(store, false),
-            "delete the Firebase user and cloud data");
+        // await ExecuteCloudOperationAsync( // removed: FirebaseModlistStore types removed
+        //     store => DeleteAllCloudModlistsAndAuthorizationAsync(store, false),
+        //     "delete the Firebase user and cloud data");
 
         var dataDirectory = _dataDirectory;
         var deletionResult = await Task.Run(() => DeleteAllManagerFiles(dataDirectory)).ConfigureAwait(true);
@@ -8006,22 +7499,13 @@ public partial class MainWindow : Window
             _viewModel.ShowMainTabCommand.Execute(null);
     }
 
-    private void PrepareForModlistLoad()
-    {
-        SwitchToInstalledModsTab();
-        ClearSelection(true);
-    }
-
-
-    private void UpdateModlistLoadingUiState()
+    private void UpdatePresetLoadingUiState()
     {
         var isEnabled = !_isApplyingPreset;
 
         if (UpdateAllButton != null) UpdateAllButton.IsEnabled = isEnabled;
 
         if (LaunchGameButton != null) LaunchGameButton.IsEnabled = isEnabled;
-
-        if (PresetsAndModlistsMenuItem != null) PresetsAndModlistsMenuItem.IsEnabled = isEnabled;
 
         if (ModsDataGrid != null)
         {
@@ -8030,7 +7514,6 @@ public partial class MainWindow : Window
             else
                 ModsDataGrid.IsEnabled = false;
         }
-
     }
 
     private async Task RefreshDeleteCachedModsMenuHeaderAsync()
@@ -8635,7 +8118,7 @@ public partial class MainWindow : Window
             DeveloperProfileManager.UpdateOriginalProfile(profileDirectory);
         }
 
-        _cloudModlistStore = null;
+        // _cloudModlistStore = null; // removed: FirebaseModlistStore types removed
         await ReloadViewModelAsync();
         UpdateDeveloperProfileMenuChecks();
     }
@@ -8859,7 +8342,7 @@ public partial class MainWindow : Window
                 _userConfiguration.SetActiveInstance(dialog.ImportedInstance, () => _instanceService.SaveInstance(dialog.ImportedInstance));
 
                 _dataDirectory = dialog.ImportedInstance.Path;
-                _cloudModlistStore = null;
+                // _cloudModlistStore = null; // removed: FirebaseModlistStore types removed
                 await ReloadViewModelAsync();
                 SyncInstalledModsToModBrowser();
 
@@ -8888,7 +8371,7 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(profileDataDirectory))
         {
             _dataDirectory = profileDataDirectory;
-            _cloudModlistStore = null;
+            // _cloudModlistStore = null; // removed: FirebaseModlistStore types removed
             await ReloadViewModelAsync();
 
             // Sync installed mods to ModBrowser so it knows what's installed in the profile
@@ -8991,7 +8474,7 @@ public partial class MainWindow : Window
 
             // Update the data directory to the instance path and reload the view model
             _dataDirectory = instance.Path;
-            _cloudModlistStore = null;
+            // _cloudModlistStore = null; // removed: FirebaseModlistStore types removed
             await ReloadViewModelAsync();
 
             // Sync installed mods to ModBrowser so it knows what's installed in this instance
@@ -9722,92 +9205,10 @@ public partial class MainWindow : Window
         DataBackupStatusMessage = string.Empty;
     }
 
-    private void BeginModlistInstallUi(int totalSteps, string message)
-    {
-        _modlistInstallTotalSteps = Math.Max(1, totalSteps);
-        _modlistInstallCompletedSteps = 0;
-        ModlistInstallProgress = 0;
-        ModlistInstallStatusMessage = message;
-        UpdateModlistDownloadSpeed(null);
-        IsModlistInstallInProgress = true;
-    }
-
-    private void UpdateModlistInstallUi(string status, double? stepPercent, double? bytesPerSecond)
-    {
-        if (!IsModlistInstallInProgress) return;
-
-        var clampedPercent = ClampPercent(stepPercent);
-        var progress = (_modlistInstallCompletedSteps + clampedPercent / 100d) / _modlistInstallTotalSteps * 100d;
-
-        ModlistInstallProgress = Math.Clamp(progress, 0, 100);
-        ModlistInstallStatusMessage = status;
-        UpdateModlistDownloadSpeed(bytesPerSecond);
-    }
-
-    private void CompleteModlistInstallStep(string status)
-    {
-        if (!IsModlistInstallInProgress) return;
-
-        _modlistInstallCompletedSteps = Math.Min(_modlistInstallCompletedSteps + 1, _modlistInstallTotalSteps);
-        ModlistInstallProgress = (double)_modlistInstallCompletedSteps / _modlistInstallTotalSteps * 100d;
-        ModlistInstallStatusMessage = status;
-        UpdateModlistDownloadSpeed(null);
-    }
-
-    private void EndModlistInstallUi()
-    {
-        IsModlistInstallInProgress = false;
-        ModlistInstallProgress = 0;
-        ModlistInstallStatusMessage = string.Empty;
-        UpdateModlistDownloadSpeed(null);
-        _modlistInstallCompletedSteps = 0;
-        _modlistInstallTotalSteps = 0;
-    }
-
     private static double ClampPercent(double? value)
     {
         if (!value.HasValue || double.IsNaN(value.Value)) return 0;
         return Math.Clamp(value.Value, 0, 100);
-    }
-
-    private void UpdateModlistDownloadSpeed(double? bytesPerSecond)
-    {
-        if (bytesPerSecond.HasValue && bytesPerSecond.Value > 0)
-        {
-            ModlistDownloadSpeed = FormatDownloadSpeed(bytesPerSecond.Value);
-            HasModlistDownloadSpeed = true;
-            return;
-        }
-
-        ModlistDownloadSpeed = string.Empty;
-        HasModlistDownloadSpeed = false;
-    }
-
-    private static string FormatDownloadSpeed(double bytesPerSecond)
-    {
-        const double kb = 1024d;
-        const double mb = kb * 1024d;
-        const double gb = mb * 1024d;
-
-        return bytesPerSecond switch
-        {
-            < kb => $"{bytesPerSecond:0} B/s",
-            < mb => $"{bytesPerSecond / kb:0.0} KB/s",
-            < gb => $"{bytesPerSecond / mb:0.0} MB/s",
-            _ => $"{bytesPerSecond / gb:0.0} GB/s"
-        };
-    }
-
-    private IProgress<ModUpdateProgress> CreateModlistInstallProgressReporter(string modDisplayName)
-    {
-        var display = string.IsNullOrWhiteSpace(modDisplayName) ? "Mod" : modDisplayName;
-
-        return new Progress<ModUpdateProgress>(p =>
-        {
-            var status = $"{display}: {p.Message}";
-            var bytesPerSecond = p.Stage == ModUpdateStage.Downloading ? p.BytesPerSecond : null;
-            UpdateModlistInstallUi(status, p.Percent, bytesPerSecond);
-        });
     }
 
     private IProgress<ModUpdateProgress> CreateModUpdateProgressReporter(string modDisplayName,
@@ -10458,16 +9859,11 @@ public partial class MainWindow : Window
         var selectedConfigOptions = metadataDialog.GetSelectedConfigOptions();
         var includedConfigurations = TryReadModConfigurations(selectedConfigOptions);
 
-        if (metadataDialog.SelectedAction == SaveInstalledModsDialogResult.SavePdf)
-        {
-            return TrySaveInstalledModsPdf(
-                listName,
-                version,
-                description,
-                createdBy,
-                includedConfigurations,
-                gameVersion);
-        }
+        // TrySaveInstalledModsPdf removed: PdfModlistSerializer/Document types removed
+        // if (metadataDialog.SelectedAction == SaveInstalledModsDialogResult.SavePdf)
+        // {
+        //     return TrySaveInstalledModsPdf(listName, version, description, createdBy, includedConfigurations, gameVersion);
+        // }
 
         try
         {
@@ -10567,14 +9963,15 @@ public partial class MainWindow : Window
 
     private ModlistLoadMode? PromptModlistLoadMode()
     {
-        var behavior = _userConfiguration.ModlistAutoLoadBehavior;
-        switch (behavior)
-        {
-            case ModlistAutoLoadBehavior.Replace:
-                return ModlistLoadMode.Replace;
-            case ModlistAutoLoadBehavior.Add:
-                return ModlistLoadMode.Add;
-        }
+        // ModlistAutoLoadBehavior removed from UserConfigurationService
+        // var behavior = _userConfiguration.ModlistAutoLoadBehavior;
+        // switch (behavior)
+        // {
+        //     case ModlistAutoLoadBehavior.Replace:
+        //         return ModlistLoadMode.Replace;
+        //     case ModlistAutoLoadBehavior.Add:
+        //         return ModlistLoadMode.Add;
+        // }
 
         var buttonOverrides = new MessageDialogButtonContentOverrides
         {
@@ -10610,24 +10007,14 @@ public partial class MainWindow : Window
 
     private bool EnsureModlistBackupBeforeLoad()
     {
+        // SuppressModlistSavePrompt removed from UserConfigurationService
         MessageBoxResult prompt;
-        if (_userConfiguration.SuppressModlistSavePrompt)
         {
-            prompt = MessageBoxResult.No;
-        }
-        else
-        {
-            var suppressButton = new MessageDialogExtraButton(
-                "No, don't ask again",
-                MessageBoxResult.No,
-                () => _userConfiguration.SetSuppressModlistSavePrompt(true));
-
             prompt = WpfMessageBox.Show(
                 "Would you like to backup your current mods as a Modlist before loading the selected Modlist? Your current mods will be deleted! ",
                 "Simple VS Manager",
                 MessageBoxButton.YesNoCancel,
-                MessageBoxImage.Question,
-                suppressButton);
+                MessageBoxImage.Question);
         }
 
         if (prompt == MessageBoxResult.Cancel) return false;
@@ -10637,10 +10024,11 @@ public partial class MainWindow : Window
             var result = TrySaveModlist(null, out var savedFilePath);
             if (result)
             {
-                if (!string.IsNullOrWhiteSpace(savedFilePath))
-                    RefreshLocalModlists(true, new[] { savedFilePath });
-                else
-                    RefreshLocalModlists(true);
+                // RefreshLocalModlists removed: LocalModlistListEntry types removed
+                // if (!string.IsNullOrWhiteSpace(savedFilePath))
+                //     RefreshLocalModlists(true, new[] { savedFilePath });
+                // else
+                //     RefreshLocalModlists(true);
             }
 
             return result;
@@ -10906,6 +10294,7 @@ public partial class MainWindow : Window
         return $"Modlist {DateTime.Now:yyyy-MM-dd HH:mm}";
     }
 
+#if false
     private static void EnsureQuestPdfLicense()
     {
         if (_isQuestPdfLicenseInitialized) return;
@@ -10913,6 +10302,7 @@ public partial class MainWindow : Window
         Settings.License = LicenseType.Community;
         _isQuestPdfLicenseInitialized = true;
     }
+#endif
 
     private static string[] GetLines(string content)
     {
@@ -10922,6 +10312,7 @@ public partial class MainWindow : Window
         return normalized.Split('\n');
     }
 
+#if false
     private static void GenerateInstalledModsPdf(
         string filePath,
         string listName,
@@ -11035,6 +10426,7 @@ public partial class MainWindow : Window
             });
         }).WithMetadata(metadata).GeneratePdf(filePath);
     }
+#endif
 
     private string GetUploaderNameForPdf()
     {
@@ -11044,12 +10436,13 @@ public partial class MainWindow : Window
         var playerName = _viewModel?.PlayerName;
         if (!string.IsNullOrWhiteSpace(playerName)) return playerName.Trim();
 
-        var suffixSource = _viewModel?.PlayerUid ?? _cloudModlistStore?.CurrentUserId;
+        var suffixSource = _viewModel?.PlayerUid; // _cloudModlistStore?.CurrentUserId removed: FirebaseModlistStore types removed
         if (!string.IsNullOrWhiteSpace(suffixSource)) return ResolveUploaderName(suffixSource);
 
         return "Anonymous";
     }
 
+#if false
     private string DetermineUploaderName(FirebaseModlistStore store)
     {
         var uploader = ResolveUploaderName(store?.CurrentUserId);
@@ -11159,6 +10552,7 @@ public partial class MainWindow : Window
             }
         }, "save the modlist to the cloud");
     }
+#endif
 
     private static string? NormalizeCloudVersion(string? version)
     {
@@ -11370,6 +10764,7 @@ public partial class MainWindow : Window
         return builder.ToString();
     }
 
+#if false
     private async void SaveModlistToCloudMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
         await SaveModlistToCloudAsync();
@@ -11413,7 +10808,9 @@ public partial class MainWindow : Window
 
         return true;
     }
+#endif
 
+#if false
     private void LocalModlistsDataGrid_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (LocalModlistsDataGrid is null)
@@ -11442,7 +10839,9 @@ public partial class MainWindow : Window
             RefreshLocalModlists(true, preservedSelection);
         }
     }
+#endif
 
+#if false
     private async void InstallLocalModlistButton_OnClick(object sender, RoutedEventArgs e)
     {
         if (_selectedLocalModlists.Count != 1) return;
@@ -11481,7 +10880,9 @@ public partial class MainWindow : Window
 
         OpenFolder(directory, "Modlists");
     }
+#endif
 
+#if false
     private void DeleteLocalModlistsButton_OnClick(object sender, RoutedEventArgs e)
     {
         if (_selectedLocalModlists.Count == 0) return;
@@ -11549,7 +10950,9 @@ public partial class MainWindow : Window
 
         RefreshLocalModlists(true, Array.Empty<string>());
     }
+#endif
 
+#if false
     private void ModifyLocalModlistButton_OnClick(object sender, RoutedEventArgs e)
     {
         if (_selectedLocalModlists.Count != 1) return;
@@ -11635,7 +11038,9 @@ public partial class MainWindow : Window
         _viewModel?.ReportStatus($"Updated modlist \"{statusName}\".");
         RefreshLocalModlists(true, new[] { entry.FilePath });
     }
+#endif
 
+#if false
     private async void RefreshCloudModlistsButton_OnClick(object sender, RoutedEventArgs e)
     {
         await RefreshCloudModlistsAsync(true);
@@ -11648,7 +11053,9 @@ public partial class MainWindow : Window
         else
             SetCloudModlistSelection(null);
     }
+#endif
 
+#if false
     private async void InstallCloudModlistButton_OnClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel is null || _selectedCloudModlist is not CloudModlistListEntry entry) return;
@@ -11722,7 +11129,9 @@ public partial class MainWindow : Window
             : $"Added mods from cloud modlist \"{preset.Name}\".";
         _viewModel.ReportStatus(status);
     }
+#endif
 
+#if false
     private async void LoadModlistFromCloudMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
         await ExecuteCloudOperationAsync(async store =>
@@ -11838,6 +11247,7 @@ public partial class MainWindow : Window
         else
             _cloudModlistsLoaded = false;
     }
+#endif
 
     private void LoadPresetMenuItem_OnSubmenuOpened(object sender, RoutedEventArgs e)
     {
@@ -11979,6 +11389,7 @@ public partial class MainWindow : Window
         _viewModel?.ReportStatus($"Loaded preset \"{loadedPreset.Name}\".");
     }
 
+#if false
     private async void LoadModlistMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel is null) return;
@@ -11999,6 +11410,7 @@ public partial class MainWindow : Window
 
         await LoadModlistFromFileAsync(dialog.FileName).ConfigureAwait(true);
     }
+#endif
 
     private async Task LoadModlistFromFileAsync(string filePath)
     {
@@ -12019,8 +11431,7 @@ public partial class MainWindow : Window
 
         if (mode == ModlistLoadMode.Replace && !EnsureModlistBackupBeforeLoad()) return;
 
-        PrepareForModlistLoad();
-
+        // PrepareForModlistLoad(); // removed: method no longer exists
         var loadOptions = GetModlistLoadOptions(mode);
 
         if (!TryLoadPresetFromFile(filePath, "Modlist", loadOptions, out var preset, out var errorMessage))
@@ -12121,7 +11532,9 @@ public partial class MainWindow : Window
         }
 
         if (string.Equals(Path.GetExtension(filePath), ".pdf", StringComparison.OrdinalIgnoreCase))
-            return TryLoadPresetFromPdf(filePath, fallbackName, options, out preset, out errorMessage);
+            // TryLoadPresetFromPdf removed: PdfDocument/PdfModlistSerializer types removed
+            errorMessage = "PDF modlist loading is not supported in this build.";
+            return false;
 
         try
         {
@@ -12132,7 +11545,24 @@ public partial class MainWindow : Window
                 json = reader.ReadToEnd();
             }
 
-            if (!PdfModlistSerializer.TryDeserializeFromJson(json, out var data, out errorMessage)) return false;
+            // PdfModlistSerializer.TryDeserializeFromJson replaced with inline implementation
+            SerializablePreset? data;
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                errorMessage = "The selected file was empty.";
+                return false;
+            }
+            try
+            {
+                data = JsonSerializer.Deserialize<SerializablePreset>(json,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (JsonException ex)
+            {
+                errorMessage = ex.Message;
+                return false;
+            }
+            if (data is null) { errorMessage = "Failed to deserialize modlist."; return false; }
 
             var snapshotName = GetSnapshotNameFromFilePath(filePath, fallbackName);
             return TryBuildPresetFromSerializable(data!, fallbackName, options, out preset, out errorMessage,
@@ -12145,6 +11575,7 @@ public partial class MainWindow : Window
         }
     }
 
+#if false
     private bool TryLoadPresetFromPdf(string filePath, string fallbackName, PresetLoadOptions options,
         out ModPreset? preset, out string? errorMessage)
     {
@@ -12243,6 +11674,7 @@ public partial class MainWindow : Window
             return false;
         }
     }
+#endif
 
     private bool TryLoadPresetFromJson(
         string json,
@@ -12262,22 +11694,27 @@ public partial class MainWindow : Window
             return false;
         }
 
-        if (!PdfModlistSerializer.TryDeserializeFromJson(json, out var data, out errorMessage)) return false;
+        // PdfModlistSerializer.TryDeserializeFromJson replaced with inline implementation
+        SerializablePreset? data;
+        try
+        {
+            data = JsonSerializer.Deserialize<SerializablePreset>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (JsonException ex)
+        {
+            errorMessage = ex.Message;
+            return false;
+        }
+        if (data is null) { errorMessage = "Failed to deserialize modlist."; return false; }
 
         var serializable = data!;
 
         if (!string.IsNullOrWhiteSpace(configJson))
         {
-            if (!PdfModlistSerializer.TryDeserializeConfigListFromJson(configJson, out var configList,
-                    out var configError))
-            {
-                errorMessage = string.IsNullOrWhiteSpace(configError)
-                    ? "The PDF configuration data could not be read."
-                    : configError;
-                return false;
-            }
-
-            ApplyConfigListToPreset(serializable, configList);
+            // PdfModlistSerializer.TryDeserializeConfigListFromJson removed: PdfModlistSerializer types removed
+            // Config JSON loading from PDFs is not supported in this build.
+            ApplyConfigListToPreset(serializable, null);
         }
 
         return TryBuildPresetFromSerializable(serializable, fallbackName, options, out preset, out errorMessage,
@@ -12439,6 +11876,7 @@ public partial class MainWindow : Window
 
     #region Cloud/Firebase Operations
 
+#if false
     private async Task ExecuteCloudOperationAsync(Func<FirebaseModlistStore, Task> operation, string actionDescription)
     {
         try
@@ -13240,6 +12678,7 @@ public partial class MainWindow : Window
         if (InstallLocalModlistButton is not null)
             InstallLocalModlistButton.IsEnabled = hasSingleSelection;
     }
+#endif
 
     #region Cloud Instance Browser
 
@@ -13987,7 +13426,7 @@ public partial class MainWindow : Window
 
         var scheduleRefreshAfterLoad = false;
         _isApplyingPreset = true;
-        UpdateModlistLoadingUiState();
+        UpdatePresetLoadingUiState();
         try
         {
             if (preset.IncludesModVersions && preset.ModStates.Count > 0)
@@ -14007,13 +13446,10 @@ public partial class MainWindow : Window
         finally
         {
             _isApplyingPreset = false;
-            UpdateModlistLoadingUiState();
+            UpdatePresetLoadingUiState();
 
             if (scheduleRefreshAfterLoad)
-            {
-                _refreshAfterModlistLoadPending = true;
-                ScheduleRefreshAfterModlistLoadIfReady();
-            }
+                await RefreshModsAsync(true).ConfigureAwait(true);
         }
     }
 
@@ -15678,9 +15114,45 @@ public partial class MainWindow : Window
         _votesCacheWatcher?.Dispose();
         _backupSemaphore.Dispose();
         _cloudStoreLock.Dispose();
-        _cloudModlistStore?.Dispose();
+        // _cloudModlistStore?.Dispose(); // removed: FirebaseModlistStore types removed
         base.OnClosed(e);
     }
+
+    #endregion
+
+    #region Stub Methods (XAML event handlers and other removed methods that must remain for compilation)
+
+    // XAML event handler stubs for removed modlist functionality
+    private void ModlistsTabControl_OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is TabControl tc && SharedInstancesTabItem != null)
+            tc.SelectedItem = SharedInstancesTabItem;
+    }
+    private void ModlistsTabControl_OnSelectionChanged(object sender, SelectionChangedEventArgs e) { }
+    private void LocalModlistsDataGrid_OnSelectionChanged(object sender, SelectionChangedEventArgs e) { }
+    private void SaveLocalModlistButton_OnClick(object sender, RoutedEventArgs e) { }
+    private async void InstallLocalModlistButton_OnClick(object sender, RoutedEventArgs e) { await Task.CompletedTask; }
+    private void OpenModlistsFolderButton_OnClick(object sender, RoutedEventArgs e) { }
+    private void DeleteLocalModlistsButton_OnClick(object sender, RoutedEventArgs e) { }
+    private void ModifyLocalModlistButton_OnClick(object sender, RoutedEventArgs e) { }
+    private async void RefreshCloudModlistsButton_OnClick(object sender, RoutedEventArgs e) { await Task.CompletedTask; }
+    private void CloudModlistsDataGrid_OnSelectionChanged(object sender, SelectionChangedEventArgs e) { }
+    private async void InstallCloudModlistButton_OnClick(object sender, RoutedEventArgs e) { await Task.CompletedTask; }
+    private async void SaveCloudModlistButton_OnClick(object sender, RoutedEventArgs e) { await Task.CompletedTask; }
+    private async void ModifyCloudModlistsButton_OnClick(object sender, RoutedEventArgs e) { await Task.CompletedTask; }
+    private void SaveModlistMenuItem_OnClick(object sender, RoutedEventArgs e) { }
+    private async void SaveModlistToCloudMenuItem_OnClick(object sender, RoutedEventArgs e) { await Task.CompletedTask; }
+    private async void LoadModlistFromCloudMenuItem_OnClick(object sender, RoutedEventArgs e) { await Task.CompletedTask; }
+    private async void DeleteCloudModlistMenuItem_OnClick(object sender, RoutedEventArgs e) { await Task.CompletedTask; }
+    private async void LoadModlistMenuItem_OnClick(object sender, RoutedEventArgs e) { await Task.CompletedTask; }
+    private async void DeleteCloudAuthMenuItem_OnClick(object sender, RoutedEventArgs e) { await Task.CompletedTask; }
+
+    // Modlist install UI stubs for removed progress overlay functionality
+    private void BeginModlistInstallUi(int totalSteps, string message) { }
+    private void CompleteModlistInstallStep(string status) { }
+    private void EndModlistInstallUi() { }
+    private IProgress<ModUpdateProgress> CreateModlistInstallProgressReporter(string modDisplayName)
+        => new Progress<ModUpdateProgress>(_ => { });
 
     #endregion
 

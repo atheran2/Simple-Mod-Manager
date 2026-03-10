@@ -45,9 +45,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly object _busyStateLock = new();
     private readonly RelayCommand _clearSearchCommand;
     private readonly ClientSettingsWatcher _clientSettingsWatcher;
-    private readonly ObservableCollection<CloudModlistListEntry> _cloudModlists = new();
     private readonly ObservableCollection<CloudInstanceListEntryViewModel> _cloudInstances = new();
-    private readonly ObservableCollection<LocalModlistListEntry> _localModlists = new();
     private readonly UserConfigurationService _configuration;
     private readonly ModDatabaseService _databaseService;
     private readonly ModDiscoveryService _discoveryService;
@@ -78,7 +76,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly HashSet<ModListItemViewModel> _searchResultSubscriptions = new();
     // Tag filtering is now handled by _tagFilterService
     private readonly ClientSettingsStore _settingsStore;
-    private readonly RelayCommand _showModlistTabCommand;
     private readonly RelayCommand _showMainTabCommand;
     private readonly RelayCommand _showDatabaseTabCommand;
     private readonly ObservableCollection<SortOption> _sortOptions;
@@ -186,9 +183,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ModsView = CollectionViewSource.GetDefaultView(_mods);
         ModsView.Filter = FilterMod;
         SearchResultsView = CollectionViewSource.GetDefaultView(_searchResults);
-        CloudModlistsView = CollectionViewSource.GetDefaultView(_cloudModlists);
         CloudInstancesView = CollectionViewSource.GetDefaultView(_cloudInstances);
-        LocalModlistsView = CollectionViewSource.GetDefaultView(_localModlists);
         InstalledTagFilters = new ReadOnlyObservableCollection<TagFilterOptionViewModel>(_installedTagFilters);
         GroupedModsView = CollectionViewSource.GetDefaultView(_groupedModsList);
         GroupedModsView.Filter = FilterGroupedItem;
@@ -209,12 +204,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _showDatabaseTabCommand = new RelayCommand(
             () => SetViewSection(ViewSection.DatabaseTab),
             () => !InternetAccessManager.IsInternetAccessDisabled);
-        _showModlistTabCommand = new RelayCommand(
-            () => SetViewSection(ViewSection.ModlistTab),
-            () => !InternetAccessManager.IsInternetAccessDisabled);
         ShowMainTabCommand = _showMainTabCommand;
         ShowDatabaseTabCommand = _showDatabaseTabCommand;
-        ShowModlistTabCommand = _showModlistTabCommand;
 
         RefreshCommand = new AsyncRelayCommand(LoadModsAsync);
         SetStatus("Ready.", false);
@@ -240,11 +231,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public ICollectionView SearchResultsView { get; }
 
-    public ICollectionView CloudModlistsView { get; }
-
     public ICollectionView CloudInstancesView { get; }
-
-    public ICollectionView LocalModlistsView { get; }
 
     public ModDirectoryWatcher ModsWatcher => _modsWatcher;
 
@@ -255,11 +242,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public ICollectionView CurrentModsView => _viewSection switch
     {
         ViewSection.DatabaseTab => SearchResultsView,
-        ViewSection.ModlistTab => CloudModlistsView,
         _ => ModsView
     };
-
-    public bool CanAccessCloudModlists => !InternetAccessManager.IsInternetAccessDisabled;
 
     public ReadOnlyObservableCollection<SortOption> SortOptions { get; }
 
@@ -752,10 +736,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public IRelayCommand ShowDatabaseTabCommand { get; }
 
-    public IRelayCommand ShowModlistTabCommand { get; }
-
-    public bool IsViewingModlistTab => _viewSection == ViewSection.ModlistTab;
-
     public bool IsViewingMainTab => _viewSection == ViewSection.MainTab;
 
     public bool SearchModDatabase => _viewSection == ViewSection.DatabaseTab;
@@ -766,11 +746,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _useModDbDesignView, value);
     }
 
-    public bool HasCloudModlists => _cloudModlists.Count > 0;
-
     public bool HasCloudInstances => _cloudInstances.Count > 0;
-
-    public bool HasLocalModlists => _localModlists.Count > 0;
 
     public string SearchText
     {
@@ -941,13 +917,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (section == ViewSection.ModlistTab && InternetAccessManager.IsInternetAccessDisabled)
-        {
-            SetStatus(InternetAccessDisabledStatusMessage, false);
-            return;
-        }
-
-
         _viewSection = section;
 
         if (!string.IsNullOrEmpty(_searchText)) SearchText = string.Empty;
@@ -962,14 +931,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 SelectedMod = null;
                 SetStatus("Showing installed mods.", false);
                 break;
-            case ViewSection.ModlistTab:
-                SelectedMod = null;
-                SetStatus("Showing cloud modlists.", false);
-                break;
         }
 
         // Notify critical property changes immediately
-        OnPropertyChanged(nameof(IsViewingModlistTab));
         OnPropertyChanged(nameof(IsViewingMainTab));
         OnPropertyChanged(nameof(SearchModDatabase));
         OnPropertyChanged(nameof(CurrentModsView));
@@ -1393,30 +1357,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         return LoadModsAsync();
     }
 
-    public void ReplaceCloudModlists(IEnumerable<CloudModlistListEntry>? entries)
-    {
-        _cloudModlists.Clear();
-
-        if (entries is not null)
-            foreach (var entry in entries)
-                if (entry is not null)
-                    _cloudModlists.Add(entry);
-
-        CloudModlistsView.Refresh();
-        OnPropertyChanged(nameof(HasCloudModlists));
-    }
-
-    public bool TryReplaceCloudModlist(CloudModlistListEntry existing, CloudModlistListEntry replacement)
-    {
-        var index = _cloudModlists.IndexOf(existing);
-        if (index < 0) return false;
-
-        _cloudModlists[index] = replacement;
-        CloudModlistsView.Refresh();
-        OnPropertyChanged(nameof(HasCloudModlists));
-        return true;
-    }
-
     public void ReplaceCloudInstances(IEnumerable<CloudInstanceListEntryViewModel>? entries)
     {
         _cloudInstances.Clear();
@@ -1428,19 +1368,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         CloudInstancesView.Refresh();
         OnPropertyChanged(nameof(HasCloudInstances));
-    }
-
-    public void ReplaceLocalModlists(IEnumerable<LocalModlistListEntry>? entries)
-    {
-        _localModlists.Clear();
-
-        if (entries is not null)
-            foreach (var entry in entries)
-                if (entry is not null)
-                    _localModlists.Add(entry);
-
-        LocalModlistsView.Refresh();
-        OnPropertyChanged(nameof(HasLocalModlists));
     }
 
     public IReadOnlyList<string> GetCurrentDisabledEntries()
@@ -4808,17 +4735,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         foreach (var mod in _searchResults) mod.RefreshInternetAccessDependentState();
 
         _showDatabaseTabCommand.NotifyCanExecuteChanged();
-        _showModlistTabCommand.NotifyCanExecuteChanged();
-        OnPropertyChanged(nameof(CanAccessCloudModlists));
 
         if (InternetAccessManager.IsInternetAccessDisabled && _viewSection == ViewSection.DatabaseTab)
-        {
-            SetStatus(InternetAccessDisabledStatusMessage, false);
-            SetViewSection(ViewSection.MainTab);
-            return;
-        }
-
-        if (InternetAccessManager.IsInternetAccessDisabled && _viewSection == ViewSection.ModlistTab)
         {
             SetStatus(InternetAccessDisabledStatusMessage, false);
             SetViewSection(ViewSection.MainTab);
@@ -4967,8 +4885,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private enum ViewSection
     {
         MainTab,
-        DatabaseTab,
-        ModlistTab
+        DatabaseTab
     }
 
     private sealed record VoteCheckTarget(

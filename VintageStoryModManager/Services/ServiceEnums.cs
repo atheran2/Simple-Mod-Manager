@@ -1,43 +1,6 @@
 namespace VintageStoryModManager.Services;
 
 /// <summary>
-///     Defines which modlists tab is currently selected.
-/// </summary>
-public enum ModlistsTabSelection
-{
-    /// <summary>
-    ///     The local modlists tab, showing modlists stored on disk.
-    /// </summary>
-    Local,
-
-    /// <summary>
-    ///     The online modlists tab, showing cloud-stored modlists.
-    /// </summary>
-    Online
-}
-
-/// <summary>
-///     Defines how the application should handle automatic modlist loading.
-/// </summary>
-public enum ModlistAutoLoadBehavior
-{
-    /// <summary>
-    ///     Prompt the user before loading the modlist.
-    /// </summary>
-    Prompt,
-
-    /// <summary>
-    ///     Automatically replace the current mod configuration with the modlist.
-    /// </summary>
-    Replace,
-
-    /// <summary>
-    ///     Automatically add the modlist to the current mod configuration.
-    /// </summary>
-    Add
-}
-
-/// <summary>
 ///     Defines the available color themes for the application UI.
 /// </summary>
 public enum ColorTheme

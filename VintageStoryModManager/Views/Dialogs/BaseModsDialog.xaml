@@ -16,6 +16,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -38,8 +39,26 @@
                   Checked="CopyBaseModsCheckBox_Changed"
                   Unchecked="CopyBaseModsCheckBox_Changed" />
 
+        <!-- Version selector -->
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    Margin="0,0,0,12">
+            <TextBlock Text="Version:"
+                       VerticalAlignment="Center"
+                       Margin="0,0,8,0" />
+            <ComboBox x:Name="VersionComboBox"
+                      Width="120"
+                      IsEditable="True"
+                      SelectionChanged="VersionComboBox_SelectionChanged"
+                      ToolTip="Select a version to manage base mods for. Type a new version name to create it." />
+            <Button Content="New Version"
+                    Margin="8,0,0,0"
+                    Click="NewVersionButton_OnClick"
+                    ToolTip="Create a new version folder using the typed version name" />
+        </StackPanel>
+
         <!-- Mods list -->
-        <Border Grid.Row="2"
+        <Border Grid.Row="3"
                 BorderBrush="{DynamicResource Brush.Dialog.TextBox.Border}"
                 BorderThickness="1"
                 Background="{DynamicResource Brush.Dialog.TextBox.Background}">
@@ -65,7 +84,7 @@
         </Border>
 
         <!-- Action buttons -->
-        <StackPanel Grid.Row="3"
+        <StackPanel Grid.Row="4"
                     Orientation="Horizontal"
                     Margin="0,12,0,0">
             <Button x:Name="AddModButton"
@@ -89,7 +108,7 @@
         </StackPanel>
 
         <!-- Close button -->
-        <StackPanel Grid.Row="4"
+        <StackPanel Grid.Row="5"
                     Orientation="Horizontal"
                     HorizontalAlignment="Right"
                     Margin="0,18,0,0">

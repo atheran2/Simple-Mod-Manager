@@ -11,6 +11,7 @@ public partial class BaseModsDialog : Window
 {
     private readonly InstanceService _instanceService;
     private readonly ObservableCollection<string> _modFiles = new();
+    private string? _selectedVersion = null;
 
     public BaseModsDialog(Window owner, InstanceService instanceService)
     {
@@ -25,14 +26,26 @@ public partial class BaseModsDialog : Window
     private void Window_OnLoaded(object sender, RoutedEventArgs e)
     {
         CopyBaseModsCheckBox.IsChecked = _instanceService.CopyBaseModsOnCreate;
-        RefreshModsList();
+        RefreshVersionList();
+    }
+
+    private void RefreshVersionList()
+    {
+        var versions = _instanceService.GetExistingBaseModVersions().ToList();
+        VersionComboBox.Items.Clear();
+        VersionComboBox.Items.Add("(unversioned)");
+        foreach (var v in versions)
+            VersionComboBox.Items.Add(v);
+
+        // Select first real version if any, else unversioned
+        VersionComboBox.SelectedIndex = versions.Count > 0 ? 1 : 0;
     }
 
     private void RefreshModsList()
     {
         _modFiles.Clear();
 
-        foreach (var file in _instanceService.GetBaseModFiles())
+        foreach (var file in _instanceService.GetBaseModFiles(_selectedVersion))
         {
             _modFiles.Add(file);
         }
@@ -55,6 +68,27 @@ public partial class BaseModsDialog : Window
         _instanceService.CopyBaseModsOnCreate = CopyBaseModsCheckBox.IsChecked == true;
     }
 
+    private void VersionComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // Use Text (not SelectedItem) so typed values on the editable ComboBox are captured
+        var text = VersionComboBox.Text?.Trim();
+        _selectedVersion = string.IsNullOrWhiteSpace(text) || text == "(unversioned)" ? null : text;
+        RefreshModsList();
+    }
+
+    private void NewVersionButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var typed = VersionComboBox.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(typed) || typed == "(unversioned)") return;
+
+        _instanceService.EnsureVersionedBaseModsDirectoryExists(typed);
+        RefreshVersionList();
+
+        // Select the newly created version
+        var idx = VersionComboBox.Items.IndexOf(typed);
+        if (idx >= 0) VersionComboBox.SelectedIndex = idx;
+    }
+
     private void AddModButton_OnClick(object sender, RoutedEventArgs e)
     {
         using var dialog = new WinForms.OpenFileDialog
@@ -73,7 +107,7 @@ public partial class BaseModsDialog : Window
 
         foreach (var filePath in dialog.FileNames)
         {
-            if (_instanceService.AddModToBaseMods(filePath))
+            if (_instanceService.AddModToBaseMods(filePath, _selectedVersion))
                 addedCount++;
             else
                 failedCount++;
@@ -113,7 +147,7 @@ public partial class BaseModsDialog : Window
         var removedCount = 0;
         foreach (var fileName in selectedItems)
         {
-            if (_instanceService.RemoveModFromBaseMods(fileName))
+            if (_instanceService.RemoveModFromBaseMods(fileName, _selectedVersion))
                 removedCount++;
         }
 
@@ -122,6 +156,6 @@ public partial class BaseModsDialog : Window
 
     private void OpenFolderButton_OnClick(object sender, RoutedEventArgs e)
     {
-        _instanceService.OpenBaseModsFolder();
+        _instanceService.OpenBaseModsFolder(_selectedVersion);
     }
 }

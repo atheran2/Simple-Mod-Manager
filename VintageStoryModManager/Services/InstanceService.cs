@@ -178,6 +178,13 @@ public sealed class InstanceService
             CopyPlayerSessionToInstance(sourceDataDirectory, instance.Path);
         }
 
+        // Ensure the versioned base mods folder exists for this version so the user
+        // can drop mods in there for future instances of the same version.
+        if (!string.IsNullOrWhiteSpace(targetVsVersion))
+        {
+            EnsureVersionedBaseModsDirectoryExists(targetVsVersion);
+        }
+
         // Copy base mods if enabled and the base mods directory exists
         if (_copyBaseModsOnCreate)
         {

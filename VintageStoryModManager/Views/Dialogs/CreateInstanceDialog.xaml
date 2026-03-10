@@ -64,7 +64,7 @@
                 ToolTip="Browse for game directory or executable" />
 
         <!-- Detected Version -->
-        <TextBlock Text="Detected Version:"
+        <TextBlock Text="Game Version:"
                    Grid.Row="2" Grid.Column="0"
                    Margin="0,0,12,12"
                    VerticalAlignment="Center" />

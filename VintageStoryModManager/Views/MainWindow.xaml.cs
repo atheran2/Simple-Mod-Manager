@@ -8652,50 +8652,7 @@ public partial class MainWindow : Window
 
     private async void CreateInstanceMenuItem_OnClick(object sender, RoutedEventArgs e)
     {
-        var dialog = new CreateInstanceDialog(this, _gameDirectory);
-        if (dialog.ShowDialog() != true) return;
-
-        var instanceName = dialog.InstanceName;
-        if (string.IsNullOrWhiteSpace(instanceName)) return;
-
-        try
-        {
-            // Pass the current profile's data directory to copy player session from
-            var sourceDataDirectory = _userConfiguration.DataDirectory;
-            var instance = _instanceService.CreateInstance(
-                instanceName,
-                sourceDataDirectory,
-                targetVsVersion: dialog.TargetVsVersion,
-                gameDirectory: dialog.GameDirectory);
-
-            // Switch to the new instance
-            _instanceService.SetActiveInstance(instance.Id);
-
-            // Set active instance for category management
-            _userConfiguration.SetActiveInstance(instance, () => _instanceService.SaveInstance(instance));
-
-            _dataDirectory = instance.Path;
-            _cloudModlistStore = null;
-            await ReloadViewModelAsync();
-
-            // Sync installed mods to ModBrowser (will be empty for new instance)
-            SyncInstalledModsToModBrowser();
-
-            RefreshInstanceMenuItems();
-            UpdateInstanceMenuChecks();
-            UpdateActiveGameProfileDisplay();
-
-            WpfMessageBox.Show(
-                $"Instance '{instance.Name}' created and activated.\n\nPath: {instance.Path}\n\nThe mod list now shows this instance's mods (empty for a new instance).",
-                "Simple VS Manager",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-        }
-        catch (Exception ex)
-        {
-            WpfMessageBox.Show($"Failed to create instance:\n{ex.Message}", "Simple VS Manager",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-        }
+        await CreateNewInstanceAsync();
     }
 
     private async void DeleteInstanceMenuItem_OnClick(object sender, RoutedEventArgs e)

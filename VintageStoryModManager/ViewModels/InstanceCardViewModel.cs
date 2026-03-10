@@ -43,10 +43,10 @@ public partial class InstanceCardViewModel : ObservableObject
     public string Path => _instance.Path;
 
     /// <summary>
-    /// Target VS version, or "Any" if not set.
+    /// Target VS version, or "No version set" if not set.
     /// </summary>
     public string GameVersion => string.IsNullOrWhiteSpace(_instance.TargetVsVersion)
-        ? "Any"
+        ? "No version set"
         : _instance.TargetVsVersion;
 
     /// <summary>

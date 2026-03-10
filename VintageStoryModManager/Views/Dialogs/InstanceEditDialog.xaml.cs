@@ -22,13 +22,16 @@ public partial class InstanceEditDialog : Window
         _instance = instance;
         _originalName = instance.Name;
 
-        // Populate fields with current values
         NameTextBox.Text = instance.Name;
         IconPathTextBox.Text = instance.IconPath ?? string.Empty;
         NotesTextBox.Text = instance.Notes ?? string.Empty;
 
-        // Auto-detect and display game version from global game directory
-        var gameVersion = VintageStoryVersionLocator.GetInstalledVersion(gameDirectory);
+        // Populate game directory: use instance override if set, else global
+        var effectiveDir = instance.GameDirectory ?? gameDirectory;
+        GameDirectoryTextBox.Text = effectiveDir ?? string.Empty;
+
+        // Detect version from effective directory
+        var gameVersion = VintageStoryVersionLocator.GetInstalledVersion(effectiveDir);
         GameVersionText.Text = gameVersion ?? "Not detected";
     }
 
@@ -51,6 +54,25 @@ public partial class InstanceEditDialog : Window
         ? null
         : NotesTextBox.Text.Trim();
 
+    /// <summary>
+    /// Gets the selected game directory override (null means use global setting).
+    /// </summary>
+    public string? GameDirectory => string.IsNullOrWhiteSpace(GameDirectoryTextBox.Text)
+        ? null
+        : GameDirectoryTextBox.Text.Trim();
+
+    /// <summary>
+    /// Gets the detected game version from the selected directory (null if not detected).
+    /// </summary>
+    public string? DetectedVersion
+    {
+        get
+        {
+            var text = GameVersionText.Text;
+            return text == "Not detected" || string.IsNullOrWhiteSpace(text) ? null : text;
+        }
+    }
+
     private void Window_OnLoaded(object sender, RoutedEventArgs e)
     {
         UpdateSaveButtonState();
@@ -68,6 +90,32 @@ public partial class InstanceEditDialog : Window
         if (SaveButton is null) return;
 
         SaveButton.IsEnabled = !string.IsNullOrWhiteSpace(NameTextBox.Text);
+    }
+
+    private void BrowseGameDirButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        using var dialog = new WinForms.FolderBrowserDialog
+        {
+            Description = "Select Vintage Story installation folder",
+            UseDescriptionForTitle = true,
+            ShowNewFolderButton = false
+        };
+
+        if (!string.IsNullOrWhiteSpace(GameDirectoryTextBox.Text)
+            && System.IO.Directory.Exists(GameDirectoryTextBox.Text))
+            dialog.InitialDirectory = GameDirectoryTextBox.Text;
+
+        if (dialog.ShowDialog() != WinForms.DialogResult.OK) return;
+
+        GameDirectoryTextBox.Text = dialog.SelectedPath;
+        var version = VintageStoryVersionLocator.GetInstalledVersion(dialog.SelectedPath);
+        GameVersionText.Text = version ?? "Not detected";
+    }
+
+    private void ClearGameDirButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        GameDirectoryTextBox.Text = string.Empty;
+        GameVersionText.Text = "Not detected";
     }
 
     private void BrowseIconButton_OnClick(object sender, RoutedEventArgs e)

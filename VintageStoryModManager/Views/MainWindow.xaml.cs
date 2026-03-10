@@ -3070,6 +3070,8 @@ public partial class MainWindow : Window
             instance.Name = dialog.InstanceName;
             instance.IconPath = dialog.IconPath;
             instance.Notes = dialog.Notes;
+            instance.GameDirectory = dialog.GameDirectory;
+            instance.TargetVsVersion = dialog.DetectedVersion;
 
             // Save the updated instance
             _instanceService.SaveInstance(instance);

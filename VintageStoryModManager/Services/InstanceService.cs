@@ -267,13 +267,23 @@ public sealed class InstanceService
 
     /// <summary>
     ///     Copies all mods from the base mods directory to a new instance.
-    ///     Prefers the versioned subfolder; falls back to the flat root.
+    ///     When the instance has a target version, only copies from the versioned subfolder.
+    ///     Falls back to the flat root only when no target version is set (unversioned instances).
     /// </summary>
     private void CopyBaseModsToInstance(GameInstance instance)
     {
-        // Prefer versioned folder; fall back to flat root
-        var versionedPath = GetVersionedBaseModsPath(instance.TargetVsVersion);
-        var sourcePath = Directory.Exists(versionedPath) ? versionedPath : BaseModsPath;
+        // Versioned instance: only copy from the matching versioned folder — no fallback to root,
+        // so old unversioned base mods don't bleed into version-specific instances.
+        // Unversioned instance: fall back to flat root for backward compat.
+        string sourcePath;
+        if (!string.IsNullOrWhiteSpace(instance.TargetVsVersion))
+        {
+            sourcePath = GetVersionedBaseModsPath(instance.TargetVsVersion);
+        }
+        else
+        {
+            sourcePath = BaseModsPath;
+        }
 
         if (!Directory.Exists(sourcePath))
             return;

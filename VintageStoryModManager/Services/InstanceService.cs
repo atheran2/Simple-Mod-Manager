@@ -272,9 +272,8 @@ public sealed class InstanceService
     private void CopyBaseModsToInstance(GameInstance instance)
     {
         // Prefer versioned folder; fall back to flat root
-        var sourcePath = Directory.Exists(GetVersionedBaseModsPath(instance.TargetVsVersion))
-            ? GetVersionedBaseModsPath(instance.TargetVsVersion)
-            : BaseModsPath;
+        var versionedPath = GetVersionedBaseModsPath(instance.TargetVsVersion);
+        var sourcePath = Directory.Exists(versionedPath) ? versionedPath : BaseModsPath;
 
         if (!Directory.Exists(sourcePath))
             return;
